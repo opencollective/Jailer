@@ -1,7 +1,6 @@
 package net.sf.jailer.ui.util;
 
 import java.awt.Color;
-import java.awt.Desktop;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.BufferedReader;
@@ -21,6 +20,7 @@ import javax.swing.JMenuItem;
 import javax.swing.Timer;
 
 import net.sf.jailer.JailerVersion;
+import net.sf.jailer.ui.BrowserLauncher;
 import net.sf.jailer.ui.Environment;
 import net.sf.jailer.ui.UIUtil;
 
@@ -178,7 +178,7 @@ public class UpdateInfoManager {
 	public static void download() {
 		try {
 			URI uri = new URI(downloadURL);
-			Desktop.getDesktop().browse(uri);
+			BrowserLauncher.openURL(uri, null);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

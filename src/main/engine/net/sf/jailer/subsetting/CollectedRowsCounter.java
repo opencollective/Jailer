@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -33,7 +34,7 @@ import net.sf.jailer.util.CancellationException;
 
 /**
  * Count the number of collected (and deleted) rows.
- * 
+ *
  * @author Ralf Wisser
  */
 public class CollectedRowsCounter implements ProgressListener {
@@ -41,7 +42,7 @@ public class CollectedRowsCounter implements ProgressListener {
 	private boolean inDeleteStage = false;
 	private Map<Table, Long> collectedRowsCount = new HashMap<Table, Long>();
 	private Map<Table, Long> deletedRowsCount = new HashMap<Table, Long>();
-	
+
 	public Map<Table, Long> getCollectedRowsCount() {
 		return collectedRowsCount;
 	}
@@ -52,7 +53,7 @@ public class CollectedRowsCounter implements ProgressListener {
 
 	/**
 	 * Creates the statistic.
-	 * 
+	 *
 	 * @return the statistic
 	 */
 	public List<String> createStatistic(boolean forDelete, final DataModel datamodel, ExportStatistic exportStatistic) {
@@ -70,7 +71,7 @@ public class CollectedRowsCounter implements ProgressListener {
 				return datamodel.getDisplayName(o1).compareTo(datamodel.getDisplayName(o2));
 			}
 		});
-		
+
 		long sum = 0;
 		for (Table stable: tabs) {
 			if (rowsCount.containsKey(stable)) {
@@ -99,7 +100,7 @@ public class CollectedRowsCounter implements ProgressListener {
 					rc -= r;
 				}
 			}
-			result.add(String.format("   %-24s %10d %s", datamodel.getDisplayName(stable), rc, reduct));
+			result.add(String.format(Locale.ENGLISH, "   %-24s %10d %s", datamodel.getDisplayName(stable), rc, reduct));
 		}
 		if (exportStatistic != null) {
 			exportStatistic.setExportedRows(exportedRows);
@@ -129,7 +130,7 @@ public class CollectedRowsCounter implements ProgressListener {
 			inDeleteStage = true;
 		}
 	}
-	
+
 	private Table getDestination(ModelElement key) {
 		if (key instanceof Association) {
 			return ((Association) key).destination;
@@ -151,10 +152,6 @@ public class CollectedRowsCounter implements ProgressListener {
 
 	@Override
 	public void prepareExport() throws CancellationException {
-	}
-
-	@Override
-	public void explained(long rc) {
 	}
 
 }

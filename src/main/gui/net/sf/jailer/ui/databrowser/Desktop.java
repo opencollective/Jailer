@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -42,17 +43,19 @@ import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionListener;
 import java.awt.event.MouseWheelEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
+import java.awt.image.BufferedImage;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyVetoException;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -62,6 +65,7 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -148,8 +152,13 @@ public abstract class Desktop extends JDesktopPane {
 	/**
 	 * Default width of a row-browser frame.
 	 */
+	private final int BROWSERTABLE_DEFAULT_MIN_X = 0;
+	private final int BROWSERTABLE_DEFAULT_MIN_Y = 0;
+
+	public static final int BROWSERTABLE_DEFAULT_HEIGHT = 460;
 	public static final int BROWSERTABLE_DEFAULT_WIDTH = 476;
-	private final int BROWSERTABLE_DEFAULT_MIN_X = 0, BROWSERTABLE_DEFAULT_MIN_Y = 6, BROWSERTABLE_DEFAULT_HEIGHT = 460, BROWSERTABLE_DEFAULT_DISTANCE = 110;
+	
+	final int BROWSERTABLE_DEFAULT_DISTANCE = 110;
 
 	/**
 	 * <code>true</code> while the desktop is visible.
@@ -243,7 +252,7 @@ public abstract class Desktop extends JDesktopPane {
 					final AtomicBoolean inProgress = new AtomicBoolean(false);
 					Map<Long, Long> durations = new LinkedHashMap<Long, Long>();
 					long lastDuration = 0;
-					final long AVG_INTERVALL_SIZE = 1000;
+					final long AVG_INTERVALL_SIZE = 4000;
 					while (true) {
 						synchronized (Desktop.this) {
 							if (!running) {
@@ -252,34 +261,32 @@ public abstract class Desktop extends JDesktopPane {
 						}
 						try {
 							inProgress.set(false);
-							long now = System.currentTimeMillis();
-							long d = lastDuration + paintDuration;
-							if (d <= 0) {
-								d = 1;
-							}
-							Iterator<Entry<Long, Long>> i = durations.entrySet().iterator();
-							while (i.hasNext()) {
-								if (i.next().getKey() < now - AVG_INTERVALL_SIZE) {
-									i.remove();
-								} else {
-									break;
+							if (!desktopAnimation.isActive()) {
+								long now = System.currentTimeMillis();
+								long d = lastDuration + paintDuration;
+								if (d <= 0) {
+									d = 1;
 								}
-							}
-							durations.put(now, d);
-							long dSum = 0;
-							for (Entry<Long, Long> e: durations.entrySet()) {
-								dSum += e.getValue();
-							}
-							long avgD = dSum / durations.size();
-							if (UIUtil.isPopupActive() && !desktopAnimation.isActive()) {
-								avgD *= 2;
-							} else {
-								avgD *= 1.05;
-							}
+								Iterator<Entry<Long, Long>> i = durations.entrySet().iterator();
+								while (i.hasNext()) {
+									if (i.next().getKey() < now - AVG_INTERVALL_SIZE) {
+										i.remove();
+									} else {
+										break;
+									}
+								}
+								durations.put(now, d);
+								long dSum = 0;
+								for (Entry<Long, Long> e: durations.entrySet()) {
+									dSum += e.getValue();
+								}
+								long avgD = dSum / durations.size();
+								if (UIUtil.isPopupActive()) {
+									avgD *= 2;
+								}
 
-							logFPS(durations, now, avgD);
-
-							Thread.sleep(Math.min(desktopAnimation.isActive()? 10 : Math.max(STEP_DELAY, avgD), 500));
+								Thread.sleep(Math.min(Math.max(STEP_DELAY, avgD), 500));
+							}
 							if (!inProgress.get()) {
 								inProgress.set(true);
 								duration.set(0);
@@ -289,12 +296,15 @@ public abstract class Desktop extends JDesktopPane {
 										long startTime = System.currentTimeMillis();
 										try {
 											checkAnchorRetension();
-											if (isDesktopVisible() && isAnimationEnabled()) {
-												suppressRepaintDesktop = true;
-												desktopAnimation.animate();
-												boolean cl = calculateLinks();
-												if (cl) {
-													repaintScrollPane();
+											if (isAnimationEnabled()) {
+												repaintOutline();
+												if (isDesktopVisible()) {
+													suppressRepaintDesktop = true;
+													desktopAnimation.animate();
+													boolean cl = calculateLinks();
+													if (cl) {
+														repaint();
+													}
 												}
 											}
 										} finally {
@@ -311,9 +321,8 @@ public abstract class Desktop extends JDesktopPane {
 						lastDuration = duration.get();
 					}
 				}
-			});
-			updateUIThread.setDaemon(true);
-			updateUIThread.start();
+			}, "Databrowser-Animator");
+			UIUtil.startDemon(updateUIThread);
 			
 			AbstractAction a = new AbstractAction() {
 				@Override
@@ -487,7 +496,7 @@ public abstract class Desktop extends JDesktopPane {
 			this.mdTable = mdTable;
 		}
 
-	};
+	}
 
 	/**
 	 * All row-browsers.
@@ -536,7 +545,129 @@ public abstract class Desktop extends JDesktopPane {
 		}
 
 		final RowBrowser tableBrowser = new RowBrowser();
-		final JInternalFrame jInternalFrame = new JInternalFrame(table == null ? "SQL" : title);
+		final JInternalFrame jInternalFrame = new JInternalFrame(table == null ? "SQL" : title) {
+			private BufferedImage m_offscreen;
+			private Dimension bufferSize = null;
+		    private AffineTransform originalTransform;
+		    private int currentIFrameBufferGeneration;
+		    
+		    /**
+		     * Creates a new buffered image to use as an offscreen buffer.
+		     */
+		    protected BufferedImage getNewOffscreenBuffer(int width, int height) {
+		    	if (originalTransform != null) {
+					width = (int) (width * originalTransform.getScaleX());
+					height = (int) (height * originalTransform.getScaleY());
+		    	}
+		        BufferedImage img = null;
+		        if ( !GraphicsEnvironment.isHeadless() ) {
+		            try {
+		                img = (BufferedImage)createImage(width, height);
+		            } catch ( Exception e ) {
+		                img = null;
+		            }
+		        }
+		        if ( img == null ) {
+		            return new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+		        }
+		        return img;
+		    }
+
+			@Override
+			public void paint(Graphics g) {
+				boolean useBuffer = (desktopAnimation != null && desktopAnimation.isActive()) || desktopOutlineDraggingInProgress();
+				boolean updateBuffer = false;
+				if (currentIFrameBufferGeneration != iFrameBufferGeneration || !useBuffer) {
+					currentIFrameBufferGeneration = iFrameBufferGeneration;
+					m_offscreen = null;
+					bufferSize = null;
+				}
+
+				Graphics2D g2D = (Graphics2D)g;
+				AffineTransform at = g2D.getTransform();
+		    	
+		        boolean newBuffer = false;
+		    	if (at != null) {
+		    		if (at.getShearX() != 0.0 || at.getShearY() != 0.0 || at.getScaleX() <= 0.0 || at.getScaleY() <= 0.0) {
+		    			super.paint(g);
+		    			return;
+		    		}
+		    		AffineTransform scaleInstance = AffineTransform.getScaleInstance(at.getScaleX(), at.getScaleY());
+		    		if (originalTransform != null && !originalTransform.equals(scaleInstance)) {
+		    			originalTransform = null;
+		    			newBuffer = true;
+		    		}
+			        if (at.getScaleX() > 1.0 || at.getScaleY() > 1.0) {
+			        	if (at.getShearX() == 0.0 && at.getShearY() == 0.0) {
+			        		originalTransform = scaleInstance;
+			            }
+			        }
+		    	}
+		    	if (bufferSize == null) {
+		    		m_offscreen = null;
+		    	} else if (Math.abs(bufferSize.getWidth() - getSize().width) > 2 || Math.abs(bufferSize.getHeight() - getSize().height) > 2) {
+		    		m_offscreen = null;
+		    		super.paint(g);
+		    		return;
+		    	}
+	    		if (m_offscreen == null || newBuffer) {
+	    			if (useBuffer) {
+	    				updateBuffer = true;
+	    			}
+	    		}
+
+		    	if (!updateBuffer) {
+					if (useBuffer) {
+						Graphics2D buf_g2D = (Graphics2D) m_offscreen.getGraphics();
+				        
+				        if (originalTransform != null) {
+				        	g2D.scale(1.0 / at.getScaleX(), 1.0 / at.getScaleY());
+				        }
+				        if (g2D.getTransform().getScaleX() != 1.0 || g2D.getTransform().getScaleY() != 1.0) {
+							g2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+					                RenderingHints.VALUE_ANTIALIAS_ON);
+							g2D.setRenderingHint(RenderingHints.KEY_RENDERING,
+					                RenderingHints.VALUE_RENDER_QUALITY);
+				        }
+				        
+				        // paint the visualization
+				        if (originalTransform != null) {
+				        	buf_g2D.setTransform(originalTransform);
+				        }
+				        g.drawImage(m_offscreen, 0, 0, null);
+				        buf_g2D.dispose();
+					} else {
+						m_offscreen = null;
+						super.paint(g);
+					}
+					return;
+				}
+		    	
+		        if (m_offscreen == null || newBuffer) {
+		            m_offscreen = getNewOffscreenBuffer(getWidth(), getHeight());
+		            bufferSize = getSize();
+		        }
+		        Graphics2D buf_g2D = (Graphics2D) m_offscreen.getGraphics();
+		        
+		        if (originalTransform != null) {
+		        	g2D.scale(1.0 / at.getScaleX(), 1.0 / at.getScaleY());
+		        }
+		        if (g2D.getTransform().getScaleX() != 1.0 || g2D.getTransform().getScaleY() != 1.0) {
+					g2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+			                RenderingHints.VALUE_ANTIALIAS_ON);
+					g2D.setRenderingHint(RenderingHints.KEY_RENDERING,
+			                RenderingHints.VALUE_RENDER_QUALITY);
+		        }
+		        
+		        // paint the visualization
+		        if (originalTransform != null) {
+		        	buf_g2D.setTransform(originalTransform);
+		        }
+		        super.paint(buf_g2D);
+		        g.drawImage(m_offscreen, 0, 0, null);
+		        buf_g2D.dispose();
+		    }
+		};
 
 		jInternalFrame.setClosable(true);
 		jInternalFrame.setIconifiable(true);
@@ -546,8 +677,8 @@ public abstract class Desktop extends JDesktopPane {
 			@Override
 			public void mouseWheelMoved(java.awt.event.MouseWheelEvent evt) {
 				long currentTime = System.currentTimeMillis();
-				startRescaleMode(currentTime, evt);
-				onMouseWheelMoved(evt, currentTime);
+				startRescaleMode(currentTime, evt.getX(), evt.getY(), evt.getComponent());
+				onMouseWheelMoved(evt.getX(), evt.getY(), evt.getWheelRotation(), evt.getComponent(), currentTime);
 				onMouseWheelMoved(evt, parentFrame.getDesktopScrollPane(), currentTime);
 			}
 		});
@@ -624,7 +755,55 @@ public abstract class Desktop extends JDesktopPane {
 
 		final BrowserContentPane browserContentPane = new BrowserContentPane(datamodel.get(), table, condition, session, parent == null ? null : parent.browserContentPane.rows,
 				association, parentFrame, rowsClosure, selectDistinct, reload, executionContext) {
+			{
+				MouseListener ml = new MouseAdapter() {
+					@Override
+					public void mouseMoved(MouseEvent e) {
+						updateRowView(e);
+					}
+					@Override
+					public void mouseExited(MouseEvent e) {
+						if (null != currentlyViewedRow) {
+							onRowSelect(table, null);
+							currentlyViewedRow = null;
+						}
+					}
+				};
+				singleRowViewScrollPane.addMouseListener(ml);
+				singleRowViewScrollPane.addMouseMotionListener((MouseMotionListener) ml);
+				singleRowViewContainterPanel.addMouseListener(ml);
+				singleRowViewContainterPanel.addMouseMotionListener((MouseMotionListener) ml);
+				rowsTable.addMouseListener(ml);
+				rowsTable.addMouseMotionListener((MouseMotionListener) ml);
+			}
 
+			private void updateRowView(MouseEvent e) {
+				int ri;
+				JComponent source = (JComponent) e.getSource();
+				if (source == rowsTable) {
+					ri = rowsTable.rowAtPoint(e.getPoint());
+				} else {
+					ri = 0;
+				}
+				if (ri >= 0 && !rows.isEmpty() && rowsTable.getRowSorter().getViewRowCount() > 0) {
+					int i = 0;
+					if (source == rowsTable) {
+						i = rowsTable.getRowSorter().convertRowIndexToModel(ri);
+					} else if (source == rowsTableScrollPane || source == singleRowViewContainterPanel) {
+						if (rows.size() != 1 || getQueryBuilderDialog() == null /* SQL Console */) {
+							return;
+						}
+						ri = 0;
+						i = 0;
+					}
+					Row row = rows.get(i);
+					if (row != currentlyViewedRow) {
+						onRowSelect(table, row);
+						currentlyViewedRow = row;
+					}
+				}
+			}
+			
 			@Override
 			protected void reloadDataModel() throws Exception {
 				Desktop.this.reloadDataModel(schemaMapping);
@@ -663,32 +842,57 @@ public abstract class Desktop extends JDesktopPane {
 				return parentFrame;
 			}
 
+			private Set<Pair<Row, Row>> addedRowPairs;
+
 			@Override
 			protected void addRowToRowLink(Row parentRow, Row childRow) {
 				synchronized (Desktop.this) {
-					RowToRowLink rowToRowLink = new RowToRowLink();
-					rowToRowLink.parentRow = parentRow;
-					rowToRowLink.childRow = childRow;
-					rowToRowLink.color1 = getAssociationColor1(association);
-					rowToRowLink.color2 = getAssociationColor2(association);
-					tableBrowser.rowToRowLinks.add(rowToRowLink);
+					Pair<Row, Row> pair = new Pair<Row, Row>(parentRow, childRow);
+					if (addedRowPairs == null || !addedRowPairs.contains(pair)) {
+						if (addedRowPairs != null) {
+							addedRowPairs.add(pair);
+						}
+						RowToRowLink rowToRowLink = new RowToRowLink();
+						rowToRowLink.parentRow = parentRow;
+						rowToRowLink.childRow = childRow;
+						rowToRowLink.color1 = getAssociationColor1(association);
+						rowToRowLink.color2 = getAssociationColor2(association);
+						tableBrowser.rowToRowLinks.add(rowToRowLink);
+					}
 				}
 			}
 
 			@Override
 			protected void beforeReload() {
 				synchronized (Desktop.this) {
+					addedRowPairs = new HashSet<Pair<Row,Row>>();
 					tableBrowser.rowToRowLinks.clear();
 				}
 			}
 
 			@Override
+			protected void afterReload() {
+				synchronized (Desktop.this) {
+					addedRowPairs = null;
+					invalidateIFramesBuffers();
+				}
+			}
+			@Override
+			protected Object getMonitorForFindClosure() {
+				return Desktop.this;
+			}
+			
+			@Override
 			protected void findClosure(Row row) {
+				invalidateIFramesBuffers();
 				Set<Pair<BrowserContentPane, Row>> rows = new HashSet<Pair<BrowserContentPane, Row>>();
-				findClosure(row, rows, false);
-				rowsClosure.currentClosure.addAll(rows);
-				rows = new HashSet<Pair<BrowserContentPane, Row>>();
-				findClosure(row, rows, true);
+				synchronized (Desktop.this) {
+					FindClosureContext findClosureContext = new FindClosureContext();
+					findClosure(row, rows, false, findClosureContext);
+					rowsClosure.currentClosure.addAll(rows);
+					rows = new HashSet<Pair<BrowserContentPane, Row>>();
+					findClosure(row, rows, true, findClosureContext);
+				}
 				rowsClosure.currentClosure.addAll(rows);
 				rowsClosure.parentPath.clear();
 				rowsClosure.parentPath.add(this);
@@ -711,7 +915,27 @@ public abstract class Desktop extends JDesktopPane {
 			}
 
 			@Override
-			protected void findClosure(Row row, Set<Pair<BrowserContentPane, Row>> closure, boolean forward) {
+			protected void findTempClosure(Row row) {
+				invalidateIFramesBuffers();
+				Set<Pair<BrowserContentPane, Row>> rows = new HashSet<Pair<BrowserContentPane, Row>>();
+				Set<Pair<BrowserContentPane, Row>> closure = new HashSet<Pair<BrowserContentPane, Row>>();
+				FindClosureContext findClosureContext = new FindClosureContext();
+				synchronized (Desktop.this) {
+					findClosure(row, rows, false, findClosureContext);
+					closure.addAll(rows);
+					rows = new HashSet<Pair<BrowserContentPane, Row>>();
+					findClosure(row, rows, true, findClosureContext);
+					closure.addAll(rows);
+				}
+				
+				rowsClosure.tempClosure.clear();
+				for (Pair<BrowserContentPane, Row> p: closure) {
+					rowsClosure.tempClosure.add(p.b);
+				}
+			}
+
+			@Override
+			protected void findClosure(Row row, Set<Pair<BrowserContentPane, Row>> closure, boolean forward, FindClosureContext findClosureContext) {
 				synchronized (Desktop.this) {
 					Pair<BrowserContentPane, Row> thisRow = new Pair<BrowserContentPane, Row>(this, row);
 					if (!closure.contains(thisRow)) {
@@ -719,28 +943,31 @@ public abstract class Desktop extends JDesktopPane {
 						if (forward) {
 							for (RowBrowser child : tableBrowsers) {
 								if (child.parent == tableBrowser) {
-									for (RowToRowLink rowToRowLink : child.rowToRowLinks) {
-										if (row.nonEmptyRowId.equals(rowToRowLink.parentRow.nonEmptyRowId)) {
-											child.browserContentPane.findClosure(rowToRowLink.childRow, closure, forward);
-										}
+									for (RowToRowLink rowToRowLink : findClosureContext.getParentPartition(child, row)) {
+//									for (RowToRowLink rowToRowLink : child.rowToRowLinks) {
+//										if (row.nonEmptyRowId.equals(rowToRowLink.parentRow.nonEmptyRowId)) {
+											child.browserContentPane.findClosure(rowToRowLink.childRow, closure, forward, findClosureContext);
+//										}
 									}
 								}
 							}
 						} else {
 							if (tableBrowser.parent != null) {
-								for (RowToRowLink rowToRowLink : tableBrowser.rowToRowLinks) {
-									if (row.nonEmptyRowId.equals(rowToRowLink.childRow.nonEmptyRowId)) {
-										tableBrowser.parent.browserContentPane.findClosure(rowToRowLink.parentRow, closure, forward);
+								for (RowToRowLink rowToRowLink : findClosureContext.getChildPartition(tableBrowser, row)) {
+//								for (RowToRowLink rowToRowLink : tableBrowser.rowToRowLinks) {
+//									if (row.nonEmptyRowId.equals(rowToRowLink.childRow.nonEmptyRowId)) {
+										tableBrowser.parent.browserContentPane.findClosure(rowToRowLink.parentRow, closure, forward, findClosureContext);
 										for (RowBrowser sibling : tableBrowsers) {
 											if (sibling.parent == tableBrowser.parent && sibling.browserContentPane != this) {
-												for (RowToRowLink sRowToRowLink: sibling.rowToRowLinks) {
-													if (rowToRowLink.parentRow.nonEmptyRowId.equals(sRowToRowLink.parentRow.nonEmptyRowId)) {
-														sibling.browserContentPane.findClosure(sRowToRowLink.childRow, closure, true);
-													}
+												for (RowToRowLink sRowToRowLink: findClosureContext.getParentPartition(sibling, rowToRowLink.parentRow)) {
+//												for (RowToRowLink sRowToRowLink: sibling.rowToRowLinks) {
+//													if (rowToRowLink.parentRow.nonEmptyRowId.equals(sRowToRowLink.parentRow.nonEmptyRowId)) {
+														sibling.browserContentPane.findClosure(sRowToRowLink.childRow, closure, true, findClosureContext);
+//													}
 												}
 											}
 										}
-									}
+//									}
 								}
 							}
 						}
@@ -979,7 +1206,7 @@ public abstract class Desktop extends JDesktopPane {
 					UIUtil.invokeLater(2, new Runnable() {
 						@Override
 						public void run() {
-							onLayoutChanged(false, true);
+							Desktop.this.onLayoutChanged(false, true);
 						}
 					});
 					UISettings.s7 += 1000;
@@ -1006,6 +1233,11 @@ public abstract class Desktop extends JDesktopPane {
 				}
 				RowBrowser tb = addTableBrowser(parent, parent, table, newAssociation, andConditionText, null, tableBrowser.internalFrame.getTitle(), false);
 				tb.internalFrame.setBounds(tableBrowser.internalFrame.getBounds());
+				try {
+					tb.internalFrame.setIcon(!tableBrowser.internalFrame.isVisible());
+				} catch (PropertyVetoException e) {
+					// ignore
+				}
 				for (RowBrowser child: getChildBrowsers()) {
 					if (child != childToIgnore) {
 						child.browserContentPane.copy(tb, child.association, null, null, false);
@@ -1019,6 +1251,11 @@ public abstract class Desktop extends JDesktopPane {
 				return isDesktopVisible();
 			}
 
+			@Override
+			protected void onLayoutChanged() {
+				Desktop.this.onLayoutChanged(false, false);
+			}
+
 		};
 
 		Rectangle r = layout(parent, association, browserContentPane, new ArrayList<RowBrowser>(), 0, -1);
@@ -1027,7 +1264,7 @@ public abstract class Desktop extends JDesktopPane {
 			public void mouseWheelMoved(java.awt.event.MouseWheelEvent evt) {
 				long currentTime = System.currentTimeMillis();
 				checkRescaleMode(evt, currentTime);
-				onMouseWheelMoved(evt, currentTime);
+				onMouseWheelMoved(evt.getX(), evt.getY(), evt.getWheelRotation(), evt.getComponent(), currentTime);
 				if (evt.getSource() instanceof JScrollPane) {
 					onMouseWheelMoved(evt, (JScrollPane) evt.getSource(), currentTime);
 				}
@@ -1253,7 +1490,7 @@ public abstract class Desktop extends JDesktopPane {
 		}
 	}
 
-	private Color getAssociationColor1(Association association) {
+	protected Color getAssociationColor1(Association association) {
 		Color color = new java.awt.Color(0, 120, 255);
 		if (association.isIgnored()) {
 			color = new java.awt.Color(153, 153, 153);
@@ -1411,16 +1648,8 @@ public abstract class Desktop extends JDesktopPane {
 	private void repaintDesktop() {
 		if (!suppressRepaintDesktop) {
 			calculateLinks();
-			repaintScrollPane();
+			repaint();
 		}
-	}
-
-	private void repaintScrollPane() {
-		JScrollPane scrollPane = getScrollPane();
-		scrollPane.setSize(scrollPane.getWidth() + 1, scrollPane.getHeight() + 1);
-		scrollPane.setSize(scrollPane.getWidth() - 1, scrollPane.getHeight() - 1);
-		scrollPane.invalidate();
-		scrollPane.validate();
 	}
 
 	/**
@@ -1687,10 +1916,11 @@ public abstract class Desktop extends JDesktopPane {
 		public final Color color2;
 		public final boolean dotted, intersect;
 		public final boolean inClosure;
+		public final boolean inTempClosure;
 		public final boolean restricted;
 		
 		public Link(RowBrowser from, RowBrowser to, String sourceRowID, String destRowID, int x1, int y1, int x2, int y2, Color color1, Color color2, boolean dotted,
-				boolean intersect, boolean inClosure, boolean restricted) {
+				boolean intersect, boolean inClosure, boolean inTempClosure, boolean restricted) {
 			this.from = from;
 			this.to = to;
 			this.sourceRowID = sourceRowID;
@@ -1704,9 +1934,10 @@ public abstract class Desktop extends JDesktopPane {
 			this.dotted = dotted;
 			this.intersect = intersect;
 			this.inClosure = inClosure;
+			this.inTempClosure = inTempClosure;
 			this.restricted = restricted;
 		}
-	};
+	}
 
 	private Map<RowBrowser, Map<String, List<Link>>> rbSourceToLinks = null;
 	private long paintDuration = 0;
@@ -1720,7 +1951,6 @@ public abstract class Desktop extends JDesktopPane {
 		super.paint(graphics);
 		if (graphics instanceof Graphics2D) {
 			final Graphics2D g2d = (Graphics2D) graphics;
-			renderActiveIFrameMarker(g2d);
 			if (renderLinks) {
 				g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 				g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
@@ -1743,17 +1973,23 @@ public abstract class Desktop extends JDesktopPane {
 									String sourceRowID = rowToRowLink.childRow.nonEmptyRowId;
 									String destRowID = rowToRowLink.parentRow.nonEmptyRowId;
 									boolean inClosure = false;
-	
+									boolean inTempClosure = false;
+									
 									if (tableBrowser.parent != null) {
 										if (rowsClosure.currentClosure.contains(new Pair<BrowserContentPane, Row>(tableBrowser.browserContentPane, rowToRowLink.childRow))) {
 											if (rowsClosure.currentClosure.contains(new Pair<BrowserContentPane, Row>(tableBrowser.parent.browserContentPane, rowToRowLink.parentRow))) {
 												inClosure = true;
 											}
 										}
+										if (rowsClosure.tempClosure.contains(rowToRowLink.childRow)) {
+											if (rowsClosure.tempClosure.contains(rowToRowLink.parentRow)) {
+												inTempClosure = true;
+											}
+										}
 									}
 	
 									Link link = new Link(tableBrowser, tableBrowser.parent, sourceRowID, destRowID, rowToRowLink.x1, rowToRowLink.y1,
-											rowToRowLink.x2, rowToRowLink.y2, color1, color2, false, false, inClosure, restricted);
+											rowToRowLink.x2, rowToRowLink.y2, color1, color2, false, false, inClosure, inTempClosure, restricted);
 									List<Link> l = links.get(sourceRowID);
 									if (l == null) {
 										l = new ArrayList<Link>();
@@ -1767,9 +2003,10 @@ public abstract class Desktop extends JDesktopPane {
 							String sourceRowID = ALL;
 							String destRowID = ALL;
 							boolean inClosure = false;
+							boolean inTempClosure = false;
 
 							Link link = new Link(tableBrowser, tableBrowser.parent, sourceRowID, destRowID, tableBrowser.x1, tableBrowser.y1,
-									tableBrowser.x2, tableBrowser.y2, color1, color2, true, true, inClosure, restricted);
+									tableBrowser.x2, tableBrowser.y2, color1, color2, true, true, inClosure, inTempClosure, restricted);
 							List<Link> l = links.get(sourceRowID);
 							if (l == null) {
 								l = new ArrayList<Link>();
@@ -1815,7 +2052,7 @@ public abstract class Desktop extends JDesktopPane {
 										boolean intersect = link.intersect;
 										boolean dotted = link.dotted || toJoin.dotted;
 										newLinks.add(new Link(link.from, toJoin.to, link.sourceRowID, toJoin.destRowID, link.x1, link.y1, toJoin.x2, toJoin.y2,
-												Color.yellow.darker().darker(), Color.yellow.darker(), dotted, intersect, link.inClosure && toJoin.inClosure, link.restricted || toJoin.restricted));
+												Color.yellow.darker().darker(), Color.yellow.darker(), dotted, intersect, link.inClosure && toJoin.inClosure, link.inTempClosure && toJoin.inTempClosure, link.restricted || toJoin.restricted));
 									}
 								}
 							}
@@ -1935,12 +2172,15 @@ public abstract class Desktop extends JDesktopPane {
 									lastInClosure = link.inClosure;
 									Color cl = pbg ? Color.white : light? link.color1 : link.color2;
 									if (!Environment.nimbus) {
-										if (cl.getGreen() > cl.getBlue() && cl.getGreen() > cl.getRed()) {
-											if (link.restricted) {
-												cl = cl.brighter();
-											}
+										if (cl.getGreen() > cl.getBlue() && cl.getGreen() >= cl.getRed()) {
+//											if (link.restricted) {
+												cl = new Color(
+														(int) (cl.getRed()),
+														(int) (cl.getGreen() * 0.75f),
+														(0));
+//											}
 										} else {
-											double f = link.restricted? 2.0 : 1.5;
+											double f = link.restricted? 1.7 : 1.1;
 											cl = new Color(
 													brighter(cl.getRed(), f),
 													brighter(cl.getGreen(), f),
@@ -1967,7 +2207,7 @@ public abstract class Desktop extends JDesktopPane {
 												link.dotted,
 												linksToRender.size() == 1 ? 0.5 : (ir + 1) * 1.0 / linksToRender.size(),
 												finalLight, followMe,
-												link.sourceRowID, link.inClosure, inClosureRootPath,
+												link.sourceRowID, link.inClosure, link.inTempClosure, inClosureRootPath,
 												isToParentLink,
 												doPaint);
 										}
@@ -2008,53 +2248,20 @@ public abstract class Desktop extends JDesktopPane {
 		}
 	}
 
-	private void renderActiveIFrameMarker(Graphics2D g2d) {
-		for (RowBrowser tableBrowser : tableBrowsers) {
-			if (tableBrowser.internalFrame.isSelected() && !isIconOrHidden(tableBrowser.internalFrame)) {
-				int z = 20;
-				double alpha = (animationStep % z) / (double) z * 2 * Math.PI;
-				double f = Math.sin(alpha) / 2.0 + 0.5;
-				Color color = markerColor(f, z);
-				g2d.setColor(color);
-				g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-				BasicStroke stroke = new BasicStroke(3, BasicStroke.CAP_ROUND, BasicStroke.JOIN_MITER);
-				g2d.setStroke(stroke);
-				final int W = 3;
-				int x1 = tableBrowser.internalFrame.getX() + W ;
-				int y1 = tableBrowser.internalFrame.getY() - 3;
-				int x2 = tableBrowser.internalFrame.getX() + tableBrowser.internalFrame.getWidth() - 2 * W;
-				int y2 = y1;
-				g2d.drawLine(x1, y1, x2, y2);
-				f = Math.sin(alpha + Math.PI / 2) / 2.0 + 0.5;
-				color = markerColor(f, z);
-				g2d.setColor(color);
-				stroke = new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_MITER);
-				g2d.setStroke(stroke);
-				g2d.drawLine(x1 - 2, y1 + 2, x2 + 2, y2 + 2);
-			}
-		}
-	}
-
-	private Color markerColor(double f, int z) {
-		Color c1 = new Color(240, 130, 80);
-		Color c2 = new Color(225, 240, 100);
-		int r = (int) (c1.getRed() + f * (c2.getRed() - c1.getRed()));
-		int g = (int) (c1.getGreen() + f * (c2.getGreen() - c1.getGreen()));
-		int b = (int) (c1.getBlue() + f * (c2.getBlue() - c1.getBlue()));
-		Color color = new Color(r, g, b, 240);
-		return color;
-	}
-
 	private double animationStep = 0;
 	long lastAnimationStepTime = 0;
 	final long STEP_DELAY = 50;
 
 	private void paintLink(Point2D start, Point2D end, Color color, Graphics2D g2d, RowBrowser tableBrowser,
 			boolean pbg, boolean intersect, boolean dotted, double midPos, boolean light,
-			Map<String, Point2D.Double> followMe, String sourceRowID, boolean inClosure, boolean inClosureRootPath,
+			Map<String, Point2D.Double> followMe, String sourceRowID, boolean inClosure, boolean inTempClosure, boolean inClosureRootPath,
 			boolean isToParentLink, boolean doPaint) {
 		if (doPaint) {
-			g2d.setColor(color);
+			if (Environment.nimbus) {
+				g2d.setColor(inTempClosure && !pbg? new Color(220, 220, 255) : color);
+			} else {
+				g2d.setColor(inTempClosure && pbg? new Color(200, 100, 200) : color);
+			}
 			BasicStroke stroke = new BasicStroke((!intersect ? (pbg ? inClosure? 3 : 2 : 1) : (pbg ? 3 : 2)));
 			if (inClosure) {
 				final int LENGTH = 16;
@@ -2232,7 +2439,7 @@ public abstract class Desktop extends JDesktopPane {
 	}
 
 	private Dimension currentDesktopnSize;
-	private Dimension postAnimationDesktopnSize;
+	private Dimension postAnimationDesktopSize;
 
 	/**
 	 * Sets all component size properties ( maximum, minimum, preferred) to the
@@ -2246,6 +2453,7 @@ public abstract class Desktop extends JDesktopPane {
 		setMinimumSize(d);
 		setMaximumSize(d);
 		setPreferredSize(d);
+		revalidate();
 		return true;
 	}
 
@@ -2373,11 +2581,15 @@ public abstract class Desktop extends JDesktopPane {
 					d.setSize(d.getWidth() - scrollInsets.left - scrollInsets.right, d.getHeight() - scrollInsets.top - scrollInsets.bottom);
 				}
 
+				minimumDesktopSize = new Dimension(Math.max(paX, x), Math.max(paY, y));
+				if (minimumDesktopSize.getWidth() == 0 || minimumDesktopSize.getHeight() == 0) {
+					minimumDesktopSize = null;
+				}
 				if (x <= d.getWidth() || isMaximized)
 					x = ((int) d.getWidth()) - 20;
 				if (y <= d.getHeight() || isMaximized)
 					y = ((int) d.getHeight()) - 20;
-				postAnimationDesktopnSize = new Dimension(Math.max(paX, x), Math.max(paY, y));
+				postAnimationDesktopSize = new Dimension(Math.max(paX, x), Math.max(paY, y));
 				if (desktop.setAllSize(x, y) && !desktopAnimation.isActive()) {
 					scrollPane.invalidate();
 					scrollPane.validate();
@@ -2386,10 +2598,12 @@ public abstract class Desktop extends JDesktopPane {
 		}
 	}
 
-	public boolean isEmpty() {
-		return tableBrowsers.isEmpty();
-	}
+	private Dimension minimumDesktopSize;
 	
+	public Dimension getMinimumDesktopSize() {
+		return minimumDesktopSize != null? minimumDesktopSize : getSize();
+	}
+
 	public synchronized void stop() {
 		running = false;
 		desktops.remove(this);
@@ -2400,17 +2614,12 @@ public abstract class Desktop extends JDesktopPane {
 			Thread thread = new Thread(new Runnable() {
 				@Override
 				public void run() {
-					try {
-						synchronized (session) {
-							session.shutDown();
-						}
-					} catch (SQLException e) {
-						// exception already has been logged
+					synchronized (session) {
+						session.shutDown();
 					}
 				}
 			});
-			thread.setDaemon(true);
-			thread.start();
+			UIUtil.startDemon(thread);
 		}
 	}
 
@@ -2661,13 +2870,13 @@ public abstract class Desktop extends JDesktopPane {
 		}
 	}
 
-	void onMouseWheelMoved(java.awt.event.MouseWheelEvent e, long currentTime) {
+	void onMouseWheelMoved(int x, int y, int wheelRotation, Component component, long currentTime) {
 		if (inRescaleMode(currentTime)) {
 			int d = 0;
-			if (e.getWheelRotation() < 0) {
+			if (wheelRotation < 0) {
 				d = 1;
 			}
-			if (e.getWheelRotation() > 0) {
+			if (wheelRotation > 0) {
 				d = -1;
 			}
 			if (d != 0) {
@@ -2678,7 +2887,7 @@ public abstract class Desktop extends JDesktopPane {
 				}
 				d += layoutMode.ordinal();
 				if (d >= 0 && d < LayoutMode.values().length) {
-					Point fixed = SwingUtilities.convertPoint(e.getComponent(), e.getPoint().x, e.getPoint().y, Desktop.this);
+					Point fixed = SwingUtilities.convertPoint(component, new Point(x, y), Desktop.this);
 					rescaleLayout(LayoutMode.values()[d], fixed);
 					rescaleFactorHasChanged = true;
 				}
@@ -2781,7 +2990,10 @@ public abstract class Desktop extends JDesktopPane {
 	public abstract void onNewDataModel();
 	public abstract void onLayoutChanged(boolean isLayouted, boolean scrollToCenter);
 	public abstract void updateBookmarksMenu();
-	
+	protected abstract void repaintOutline();
+	protected abstract boolean desktopOutlineDraggingInProgress();
+	protected abstract void openGlobalPopup(MouseEvent e);
+
 	public void openSchemaMappingDialog(boolean silent) {
 		try {
 			Map<String, String> mapping = schemaMapping;
@@ -2870,7 +3082,7 @@ public abstract class Desktop extends JDesktopPane {
 	public void storeSession(BookmarksPanel bookmarksPanel) {
 		String fnProp = null;
 		int propLen = 0;
-		final String INVALID_CHARS = "['`\"/\\\\\\~]+";
+		final String INVALID_CHARS = "[:;\\*\\?<>'`\"/\\\\\\~]+";
 		for (RowBrowser rb : tableBrowsers) {
 			if (rb.browserContentPane.table != null) {
 				if (!(rb.browserContentPane.table instanceof BrowserContentPane.SqlStatementTable)) {
@@ -2929,6 +3141,9 @@ public abstract class Desktop extends JDesktopPane {
 			if (bookmarksPanel == null) {
 				currentSessionFileName = sFile;
 			} else {
+				if (sFile != null && new File(sFile).exists()) {
+					new File(sFile).setLastModified(System.currentTimeMillis());
+				}
 				bookmarksPanel.updateBookmarksMenu();
 				updateAllBookmarkMenues();
 			}
@@ -2983,7 +3198,7 @@ public abstract class Desktop extends JDesktopPane {
 						+ (rb.association == null ? "" : CsvFile.encodeCell(rb.association.getName())) + "; ";
 			}
 			csv += rb.isHidden() + "; ";
-			csv += serializedSortKey(rb.browserContentPane.rowsTable);
+			csv += rb.browserContentPane.ignoreSortKey? "" : serializedSortKey(rb.browserContentPane.rowsTable);
 			out.append(csv).append(LF);
 			for (RowBrowser child : tableBrowsers) {
 				if (child.parent == rb) {
@@ -3265,6 +3480,8 @@ public abstract class Desktop extends JDesktopPane {
 		return roots;
 	}
 
+	public static Boolean forceAdjustRows = false;
+
 	/**
 	 * Adjusts scroll-position of each table browser s.t. rows in closure are
 	 * visible.
@@ -3273,6 +3490,27 @@ public abstract class Desktop extends JDesktopPane {
 	 * @param thisOne only adjust this one if it is not <code>null</code>
 	 */
 	protected synchronized void adjustClosure(BrowserContentPane tabu, BrowserContentPane thisOne) {
+		if (forceAdjustRows == null) {
+			return;
+		}
+		if (tabu != null && thisOne == null) {
+			if (pendingTabu == null) {
+				pendingTabu = tabu;
+				UIUtil.invokeLater(() -> {
+					doAdjustClosure(pendingTabu, null);
+					pendingTabu = null;
+				});
+			} else if (pendingTabu != tabu) {
+				doAdjustClosure(tabu, thisOne);
+			}
+		} else {
+			doAdjustClosure(tabu, thisOne);
+		}
+	}
+	
+	private BrowserContentPane pendingTabu = null;
+	
+	private synchronized void doAdjustClosure(BrowserContentPane tabu, BrowserContentPane thisOne) {
 		for (RowBrowser rb : tableBrowsers) {
 			if (rb.browserContentPane == tabu) {
 				continue;
@@ -3280,12 +3518,64 @@ public abstract class Desktop extends JDesktopPane {
 			if (thisOne != null && rb.browserContentPane != thisOne) {
 				continue;
 			}
-			List<Row> rowsOfRB = new ArrayList<Row>();
-			for (Pair<BrowserContentPane, Row> r : rowsClosure.currentClosure) {
-				if (r.a == rb.browserContentPane) {
-					rowsOfRB.add(r.b);
+
+			Set<Row> rowsOfParent = new HashSet<Row>();
+			if (rb.parent != null) {
+				for (Pair<BrowserContentPane, Row> r : rowsClosure.currentClosure) {
+					if (r.a == rb.parent.browserContentPane) {
+						rowsOfParent.add(r.b);
+					}
 				}
 			}
+
+			List<Row> rowsOfRB = new ArrayList<Row>();
+			Set<Row> rowsOfRBSet = new LinkedHashSet<Row>();
+			for (RowToRowLink link: rb.rowToRowLinks) {
+				if (rowsOfParent.contains(link.parentRow)) {
+					rowsOfRBSet.add(link.childRow);
+				}
+			}
+			for (Pair<BrowserContentPane, Row> r : rowsClosure.currentClosure) {
+				if (r.a == rb.browserContentPane) {
+					if (rowsOfRBSet.isEmpty() || rowsOfRBSet.contains(r.b)) {
+						rowsOfRB.add(r.b);
+					}
+				}
+			}
+
+			int topBorder = -1;
+			if (rb.parent != null) {
+				Rectangle firstParentRowPos = null;
+				for (Row r : rowsOfParent) {
+					int index = rb.parent.browserContentPane.rows.indexOf(r);
+					if (index < 0) {
+						for (int n = 0; n < rb.parent.browserContentPane.rows.size(); ++n) {
+							if (r.nonEmptyRowId.equals(rb.parent.browserContentPane.rows.get(n).nonEmptyRowId)) {
+								index = n;
+								break;
+							}
+						}
+					}
+
+					if (index < 0) {
+						// not visible due to distinct selection
+						continue;
+					}
+					index = rb.parent.browserContentPane.rowsTable.getRowSorter().convertRowIndexToView(index);
+					Rectangle pos = rb.parent.browserContentPane.rowsTable.getCellRect(index, 0, false);
+
+					if (firstParentRowPos == null || firstParentRowPos.y > pos.y) {
+						firstParentRowPos = pos;
+					}
+				}
+				if (firstParentRowPos != null) {
+					Rectangle visibleRect = rb.parent.browserContentPane.rowsTable.getVisibleRect();
+					if (!(firstParentRowPos.y > visibleRect.getMaxY() || firstParentRowPos.y < visibleRect.getMinY())) {
+						topBorder = (int) (firstParentRowPos.y - visibleRect.getMinY());
+					}
+				}
+			}
+			
 			if (!rowsOfRB.isEmpty()) {
 				Rectangle firstRowPos = null;
 				Rectangle lastRowPos = null;
@@ -3300,13 +3590,15 @@ public abstract class Desktop extends JDesktopPane {
 							}
 						}
 					}
+
 					if (index < 0) {
 						// not visible due to distinct selection
 						continue;
 					}
 					index = rb.browserContentPane.rowsTable.getRowSorter().convertRowIndexToView(index);
 					Rectangle pos = rb.browserContentPane.rowsTable.getCellRect(index, 0, false);
-					if (pos.y >= visibleRect.y && pos.y + pos.height < visibleRect.y + visibleRect.height) {
+
+					if (!forceAdjustRows && pos.y >= visibleRect.y && pos.y + pos.height < visibleRect.y + visibleRect.height) {
 						// already a visible row
 						firstRowPos = null;
 						lastRowPos = null;
@@ -3319,13 +3611,21 @@ public abstract class Desktop extends JDesktopPane {
 						lastRowPos = pos;
 					}
 				}
+				if (lastRowPos != null && firstRowPos != null && rb.browserContentPane.rowsTable.getRowCount() > 0) {
+					lastRowPos = rb.browserContentPane.rowsTable.getCellRect(rb.browserContentPane.rowsTable.getRowCount(), 0, false);
+				}
 				if (lastRowPos != null) {
 					rb.browserContentPane.rowsTable
 							.scrollRectToVisible(new Rectangle(visibleRect.x, lastRowPos.y - lastRowPos.height, 1, 3 * lastRowPos.height));
 				}
 				if (firstRowPos != null) {
-					rb.browserContentPane.rowsTable.scrollRectToVisible(new Rectangle(visibleRect.x, firstRowPos.y - firstRowPos.height, 1,
+					if (topBorder >= 0 && topBorder < firstRowPos.y && topBorder + 2 * firstRowPos.height < visibleRect.height) {
+						rb.browserContentPane.rowsTable.scrollRectToVisible(new Rectangle(visibleRect.x, firstRowPos.y - topBorder, 1,
+								topBorder + firstRowPos.height));
+					} else {
+						rb.browserContentPane.rowsTable.scrollRectToVisible(new Rectangle(visibleRect.x, firstRowPos.y - firstRowPos.height, 1,
 							3 * firstRowPos.height));
+					}
 				}
 			}
 		}
@@ -3401,7 +3701,8 @@ public abstract class Desktop extends JDesktopPane {
 	protected abstract boolean isDesktopVisible();
 	protected abstract void checkAnchorRetension();
 	protected abstract void changeColumnOrder(Table table);
-	
+	protected abstract void onRowSelect(Table table, Row row);
+
 	/**
 	 * Scrolls an iFrame to the center of the desktop.
 	 */
@@ -3421,7 +3722,7 @@ public abstract class Desktop extends JDesktopPane {
 			y = 0;
 		}
 		Rectangle r = new Rectangle(x, y, Math.max(1, w), Math.max(1, h));
-		Rectangle vr = new Rectangle(postAnimationDesktopnSize != null? postAnimationDesktopnSize : currentDesktopnSize == null? getScrollPane().getViewport().getPreferredSize() : currentDesktopnSize);
+		Rectangle vr = new Rectangle(postAnimationDesktopSize != null? postAnimationDesktopSize : currentDesktopnSize == null? getScrollPane().getViewport().getPreferredSize() : currentDesktopnSize);
 		desktopAnimation.scrollRectToVisible(r.intersection(vr), false);
 	}
 
@@ -3497,22 +3798,15 @@ public abstract class Desktop extends JDesktopPane {
 		lastBrowserContentPane = null;
 	}
 
-	private void logFPS(Map<Long, Long> durations, long now, long avgD) {
-//		long k = durations.keySet().iterator().next();
-//		if (k != now && desktopAnimation.isActive()) {
-//			System.out.println(avgD + " FPS " + 1000.0 * (((double) durations.size() / (now - k))));
-//		}
-	}
-
 	private final int RESCALE_DURATION = 500;
 	private Long rescaleModeEnd;
 	private Point rescaleStartPosition;
 	private boolean rescaleFactorHasChanged = false;
 
-	public void startRescaleMode(long currentTime, MouseWheelEvent evt) {
+	public void startRescaleMode(long currentTime, int x, int y, Component component) {
 		rescaleModeEnd = currentTime + RESCALE_DURATION;
-		rescaleStartPosition = new Point(evt.getX(),  evt.getY());
-		SwingUtilities.convertPointToScreen(rescaleStartPosition, evt.getComponent());
+		rescaleStartPosition = new Point(x, y);
+		SwingUtilities.convertPointToScreen(rescaleStartPosition, component);
 	}
 	
 	public void checkRescaleMode(MouseWheelEvent evt, long currentTime) {
@@ -3570,6 +3864,64 @@ public abstract class Desktop extends JDesktopPane {
 		return mapping.toString();
 	}
 
+	private Row currentlyViewedRow = null;
+	
+	public static class FindClosureContext {
+		Map<RowBrowser, Map<String, Collection<RowToRowLink>>> childRowsPartitions = new HashMap<Desktop.RowBrowser, Map<String,Collection<RowToRowLink>>>();
+		Map<RowBrowser, Map<String, Collection<RowToRowLink>>> parentRowsPartitions = new HashMap<Desktop.RowBrowser, Map<String,Collection<RowToRowLink>>>();
+		
+		Collection<RowToRowLink> getChildPartition(RowBrowser browser, Row row) {
+			Map<String, Collection<RowToRowLink>> partitionPerBrowser = childRowsPartitions.get(browser);
+			if (partitionPerBrowser == null) {
+				partitionPerBrowser = new HashMap<String, Collection<RowToRowLink>>();
+				childRowsPartitions.put(browser, partitionPerBrowser);
+				for (RowToRowLink link: browser.rowToRowLinks) {
+					Collection<RowToRowLink> partition = partitionPerBrowser.get(link.childRow.nonEmptyRowId);
+					if (partition == null) {
+						partition = new ArrayList<RowToRowLink>();
+						partitionPerBrowser.put(link.childRow.nonEmptyRowId, partition);
+					}
+					partition.add(link);
+				}
+			}
+			Collection<RowToRowLink> partition = partitionPerBrowser.get(row.nonEmptyRowId);
+			if (partition == null) {
+				partition = new ArrayList<RowToRowLink>();
+				partitionPerBrowser.put(row.nonEmptyRowId, partition);
+			}
+			return partition;
+		}
+		
+		Collection<RowToRowLink> getParentPartition(RowBrowser browser, Row row) {
+			Map<String, Collection<RowToRowLink>> partitionPerBrowser = parentRowsPartitions.get(browser);
+			if (partitionPerBrowser == null) {
+				partitionPerBrowser = new HashMap<String, Collection<RowToRowLink>>();
+				parentRowsPartitions.put(browser, partitionPerBrowser);
+				for (RowToRowLink link: browser.rowToRowLinks) {
+					Collection<RowToRowLink> partition = partitionPerBrowser.get(link.parentRow.nonEmptyRowId);
+					if (partition == null) {
+						partition = new ArrayList<RowToRowLink>();
+						partitionPerBrowser.put(link.parentRow.nonEmptyRowId, partition);
+					}
+					partition.add(link);
+				}
+			}
+			Collection<RowToRowLink> partition = partitionPerBrowser.get(row.nonEmptyRowId);
+			if (partition == null) {
+				partition = new ArrayList<RowToRowLink>();
+				partitionPerBrowser.put(row.nonEmptyRowId, partition);
+			}
+			return partition;
+		}
+
+	}
+	
+	private int iFrameBufferGeneration;
+	
+	private void invalidateIFramesBuffers() {
+		++iFrameBufferGeneration;
+	}
+
 	/**
 	 * Maximum number of concurrent DB connections.
 	 */
@@ -3594,10 +3946,12 @@ public abstract class Desktop extends JDesktopPane {
 						}
 					}
 				}
-			}, "PQueue Worker " + i);
+			}, "PQueue-Worker-" + (i + 1));
 			t.setDaemon(true);
 			t.start();
 		}
 	}
 
+	// TODO display names for associations? (using unique fk-column list?)
+	
 }

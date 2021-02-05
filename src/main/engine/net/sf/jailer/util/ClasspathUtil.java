@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
+import net.sf.jailer.configuration.Configuration;
 
 /**
  * Loads jar files dynamically.
@@ -63,6 +65,13 @@ public class ClasspathUtil {
 
 		for (String fn: jars) {
 			File file = new File(fn);
+			if (!file.exists() && !file.isAbsolute() && Configuration.applicationBase != null) {
+				File home = new File(System.getProperty("user.home"), ".jailer");
+				File uFile = new File(home, fn);
+				if (uFile.exists()) {
+					file = uFile;
+				}
+			}
 			if (!file.exists()) {
 				throw new FileNotFoundException("Jar-file not found: '" + fn + "'");
 			}

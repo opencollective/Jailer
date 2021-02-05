@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,11 @@
  */
 package net.sf.jailer.ui;
 
+import java.awt.Component;
 import java.awt.Desktop;
 import java.net.URI;
+
+import javax.swing.JOptionPane;
 
 /**
  * Browser launcher.
@@ -27,9 +30,15 @@ public class BrowserLauncher {
 	 * Opens URL in browser.
 	 * 
 	 * @param uri the uri to open
+	 * @param parent parent component
 	 */
-	public static void openURL(URI uri) throws Exception {
-		Desktop.getDesktop().browse(uri);
+	public static void openURL(URI uri, Component parent) {
+		try {
+			Desktop.getDesktop().browse(uri);
+		} catch (Throwable t) {
+			String message = "The default browser for displaying\n" + (uri.toString()) + "\ncan not be started.";
+			JOptionPane.showMessageDialog(parent, message, "Warning", JOptionPane.WARNING_MESSAGE);
+		}
 	}
 
 }

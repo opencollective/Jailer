@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,25 +50,25 @@ import net.sf.jailer.util.SqlUtil;
 
 /**
  * Creates the DDL for the working-tables.
- * 
+ *
  * @author Ralf Wisser
  */
 public class DDLCreator {
-	
+
 	/**
 	 * The execution context.
 	 */
 	private final ExecutionContext executionContext;
-	
+
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param executionContext the command line arguments
 	 */
 	public DDLCreator(ExecutionContext executionContext) {
 		this.executionContext = executionContext;
 	}
-	
+
 	/**
 	 * Creates the DDL for the working-tables.
 	 */
@@ -92,7 +92,8 @@ public class DDLCreator {
 	public void createDDL(Session localSession, WorkingTableScope temporaryTableScope, String workingTableSchema) throws FileNotFoundException, IOException, SQLException {
 		// TODO register all current export processes.
 		// Fail if a process is still active.
-		// Use a heard beat concept to detect dead processes 
+		// Use a heard beat concept to detect dead processes
+		// Use this to create unique entity-graph-ids
 		createDDL(new DataModel(executionContext), localSession, temporaryTableScope, workingTableSchema);
 	}
 
@@ -101,6 +102,23 @@ public class DDLCreator {
 	 */
 	public boolean createDDL(DataModel datamodel, Session session, WorkingTableScope temporaryTableScope, String workingTableSchema) throws FileNotFoundException, IOException, SQLException {
 		RowIdSupport rowIdSupport = new RowIdSupport(datamodel, targetDBMS(session), executionContext);
+		if (session != null && session.dbms.getExperimentalTypeReplacement() != null && !session.dbms.getExperimentalTypeReplacement().isEmpty()) {
+			Map<String, String> oldTypeReplacement = session.dbms.getTypeReplacement();
+			if (oldTypeReplacement == null) {
+				session.dbms.setTypeReplacement(session.dbms.getExperimentalTypeReplacement());
+			} else {
+				HashMap<String, String> repl = new HashMap<String, String>(session.dbms.getTypeReplacement());
+				repl.putAll(session.dbms.getExperimentalTypeReplacement());
+				session.dbms.setTypeReplacement(repl);
+			}
+			try {
+				return createDDL(datamodel, session, temporaryTableScope, rowIdSupport, workingTableSchema);
+			} catch (Throwable t) {
+				// fall through
+			} finally {
+				session.dbms.setTypeReplacement(oldTypeReplacement);
+			}
+		}
 		return createDDL(datamodel, session, temporaryTableScope, rowIdSupport, workingTableSchema);
 	}
 
@@ -119,7 +137,7 @@ public class DDLCreator {
 	/**
 	 * Creates the DDL for the working-tables.
 	 */
-	public boolean createDDL(DataModel datamodel, Session session, WorkingTableScope temporaryTableScope, RowIdSupport rowIdSupport, String workingTableSchema, boolean withTableProperties) throws FileNotFoundException, IOException, SQLException {
+	private boolean createDDL(DataModel datamodel, Session session, WorkingTableScope temporaryTableScope, RowIdSupport rowIdSupport, String workingTableSchema, boolean withTableProperties) throws FileNotFoundException, IOException, SQLException {
 		uPKWasTooLong = false;
 		try {
 			return createDDL(datamodel, session, temporaryTableScope, 0, rowIdSupport, workingTableSchema, withTableProperties);
@@ -189,7 +207,7 @@ public class DDLCreator {
 		}
 		String tableName = SQLDialect.CONFIG_TABLE_;
 		arguments.put("config-dml-reference", tableName);
-		String schema = workingTableSchema != null? (session == null? workingTableSchema : new Quoting(session).requote(workingTableSchema)) + "." : "";
+		String schema = workingTableSchema != null? (session == null? workingTableSchema : Quoting.getQuoting(session).requote(workingTableSchema)) + "." : "";
 		arguments.put("schema", schema);
 		arguments.put("index-schema", supportsSchemasInIndexDefinitions(session)? schema : "");
 		if (tableManager != null) {
@@ -223,9 +241,21 @@ public class DDLCreator {
 		Map<String, List<String>> listArguments = new HashMap<String, List<String>>();
 		if (indexType == 0) {
 			// full index
-			listArguments.put("column-list", Collections.singletonList(", " + upk.columnList(null)));
-			listArguments.put("column-list-from", Collections.singletonList(", " + upk.columnList("FROM_")));
-			listArguments.put("column-list-to", Collections.singletonList(", " + upk.columnList("TO_")));
+			final int MAX_INDEX_SIZE = 12;
+			PrimaryKey pk = upk;
+			if (pk.numberOfIndexedPKColumns < pk.getColumns().size()) {
+				int iSize = pk.getColumns().size();
+				if (iSize > MAX_INDEX_SIZE) {
+					iSize = Math.max(MAX_INDEX_SIZE, pk.numberOfIndexedPKColumns);
+				}
+				if (iSize < pk.getColumns().size()) {
+					pk = new PrimaryKey(new ArrayList<Column>(pk.getColumns().subList(0, iSize)), false);
+				}
+			}
+
+			listArguments.put("column-list", Collections.singletonList(", " + pk.columnList(null)));
+			listArguments.put("column-list-from", Collections.singletonList(", " + pk.columnList("FROM_")));
+			listArguments.put("column-list-to", Collections.singletonList(", " + pk.columnList("TO_")));
 		} else if (indexType == 1) {
 			// single column indexes
 			List<String> cl = new ArrayList<String>();
@@ -296,17 +326,17 @@ public class DDLCreator {
 
 	/**
 	 * Checks whether working-tables schema is up-to-date.
-	 * @param useRowId 
-	 * @param workingTableSchema 
-	 * 
+	 * @param useRowId
+	 * @param workingTableSchema
+	 *
 	 * @return <code>true</code> if working-tables schema is up-to-date
 	 */
-	public boolean isUptodate(DataSource dataSource, DBMS dbms, boolean useRowId, String workingTableSchema) {
+	public boolean isUptodate(DataSource dataSource, DBMS dbms, boolean useRowId, boolean useRowIdsOnlyForTablesWithoutPK, String workingTableSchema) {
 		try {
 			if (dataSource != null) {
 				final Session session = new Session(dataSource, dbms, executionContext.getIsolationLevel());
 				try {
-					return isUptodate(session, useRowId, workingTableSchema);
+					return isUptodate(session, useRowId, useRowIdsOnlyForTablesWithoutPK, workingTableSchema);
 				} finally {
 					session.shutDown();
 				}
@@ -315,15 +345,15 @@ public class DDLCreator {
 		}
 		return false;
 	}
-	
+
 	/**
 	 * Checks whether working-tables schema is up-to-date.
-	 * @param useRowId 
-	 * @param workingTableSchema 
-	 * 
+	 * @param useRowId
+	 * @param workingTableSchema
+	 *
 	 * @return <code>true</code> if working-tables schema is up-to-date
 	 */
-	public boolean isUptodate(final Session session, boolean useRowId, String workingTableSchema) {
+	public boolean isUptodate(final Session session, boolean useRowId, boolean useRowIdsOnlyForTablesWithoutPK, String workingTableSchema) {
 		try {
 			boolean wasSilent = session.getSilent();
 			try {
@@ -331,10 +361,10 @@ public class DDLCreator {
 				final boolean[] uptodate = new boolean[] { false };
 				final DataModel datamodel = new DataModel(executionContext);
 				final Map<String, String> typeReplacement = targetDBMS(session).getTypeReplacement();
-				final RowIdSupport rowIdSupport = new RowIdSupport(datamodel, targetDBMS(session), useRowId);
-				
-				final String schema = workingTableSchema == null ? "" : new Quoting(session).requote(workingTableSchema) + ".";
-				
+				final RowIdSupport rowIdSupport = new RowIdSupport(datamodel, targetDBMS(session), useRowId, useRowIdsOnlyForTablesWithoutPK);
+
+				final String schema = workingTableSchema == null ? "" : Quoting.getQuoting(session).requote(workingTableSchema) + ".";
+
 				Session.ResultSetReader reader = new Session.ResultSetReader() {
 					@Override
 					public void readCurrentRow(ResultSet resultSet) throws SQLException {
@@ -372,7 +402,7 @@ public class DDLCreator {
 							"WHERE jversion='" + JailerVersion.WORKING_TABLE_VERSION + "' and jkey='" + testId + "'");
 				}
 				return uptodate[0];
-			} catch (Exception e) {
+			} catch (Throwable t) {
 				try {
 					// [bugs:#37] PostreSQL: transactional execution
 					session.getConnection().commit();
@@ -383,14 +413,14 @@ public class DDLCreator {
 			} finally {
 				session.setSilent(wasSilent);
 			}
-		} catch (Exception e) {
+		} catch (Throwable e) {
 			return false;
 		}
 	}
 
 	/**
 	 * Checks whether working-tables schema is present.
-	 * 
+	 *
 	 * @return <code>true</code> if working-tables schema is present
 	 */
 	public boolean isPresent(Session session) {
@@ -424,7 +454,7 @@ public class DDLCreator {
 
 	/**
 	 * Checks for conflicts of existing tables and working-tables.
-	 * 
+	 *
 	 * @return name of table in conflict or <code>null</code>
 	 */
 	public String getTableInConflict(DataSource dataSource, DBMS dbms) {

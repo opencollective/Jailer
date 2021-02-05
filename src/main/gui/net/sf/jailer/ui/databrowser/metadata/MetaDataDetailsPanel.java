@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,9 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import net.sf.jailer.ExecutionContext;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.datamodel.Association;
+import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
+import net.sf.jailer.datamodel.PrimaryKey;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.modelbuilder.MemorizedResultSet;
 import net.sf.jailer.modelbuilder.ModelBuilder;
@@ -59,12 +61,12 @@ import net.sf.jailer.ui.QueryBuilderDialog.Relationship;
 import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.ui.databrowser.BrowserContentPane;
 import net.sf.jailer.ui.databrowser.BrowserContentPane.LoadJob;
+import net.sf.jailer.ui.databrowser.Desktop.FindClosureContext;
 import net.sf.jailer.ui.databrowser.Desktop.RowBrowser;
 import net.sf.jailer.ui.databrowser.Reference;
 import net.sf.jailer.ui.databrowser.Row;
 import net.sf.jailer.ui.databrowser.sqlconsole.SQLConsole;
 import net.sf.jailer.util.Pair;
-import net.sf.jailer.util.Quoting;
 
 /**
  * Meta Data Details View.
@@ -87,7 +89,7 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 	private final JPanel ddlPanel;
 	private final JPanel constraintsPanel;
 	private final Map<Pair<MetaDataDetails, MDTable>, JComponent> detailsViews = new HashMap<Pair<MetaDataDetails, MDTable>, JComponent>();
-	private final Map<Table, JComponent> tableDetailsViews = new HashMap<Table, JComponent>();
+	private final Map<Table, TableDetailsView> tableDetailsViews = new HashMap<Table, TableDetailsView>();
 
     /**
      * Creates new form MetaDataDetailsPanell 
@@ -136,7 +138,7 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 						}
 					}
 				}
-			});
+			}, "Metadata-LoadDetails-" + (i + 1));
 	        thread.setDaemon(true);
 	        thread.start();
         }
@@ -161,22 +163,23 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
     	otherPanel.repaint();
 	}
 
-    public void showMetaDataDetails(final MDTable mdTable, Table table, DataModel dataModel) {
+    public void showMetaDataDetails(final MDTable mdTable, Table table, Row row, boolean onlyTable, DataModel dataModel) {
     	setVisible(true);
         ((CardLayout) getLayout()).show(this, "table");
     	tableDetailsPanel.removeAll();
     	if (table != null) {
-    		JComponent view = tableDetailsViews.get(table);
-    		if (view == null) {
-    			TableDetailsView tdv = new TableDetailsView(table, mdTable, this, dataModel);
+    		TableDetailsView view = tableDetailsViews.get(table);
+    		if (row != null || view == null) {
+    			TableDetailsView tdv = new TableDetailsView(table, mdTable, this, row, dataModel, (TableDetailsView) view);
     			view = tdv;
-    			if (tdv.isCacheable()) {
+    			if (row == null && tdv.isCacheable()) {
     				tableDetailsViews.put(table, view);
     			}
     		}
     		tableDetailsPanel.add(view);
-    	} else if (!ModelBuilder.isJailerTable(mdTable.getUnquotedName())) {
+    	} else if (mdTable != null && !ModelBuilder.isJailerTable(mdTable.getUnquotedName())) {
     		JButton analyseButton = new JButton("Analyse schema \"" + mdTable.getSchema().getUnquotedName() + "\"");
+    		analyseButton.setIcon(MetaDataPanel.getScaledIcon(this, MetaDataPanel.warnIcon, false));
     		analyseButton.addActionListener(new ActionListener() {
 				@Override
 				public void actionPerformed(ActionEvent e) {
@@ -200,31 +203,46 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
     		panel.add(new JLabel("  is not part of the data model."), gridBagConstraints);
     		gridBagConstraints = new java.awt.GridBagConstraints();
 	        gridBagConstraints.gridx = 1;
+	        gridBagConstraints.gridy = 4;
+	        gridBagConstraints.gridwidth = 1;
+	        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+	        gridBagConstraints.weightx = 1;
+	        gridBagConstraints.weighty = 1;
+	        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+    		if (mdTable.isLoaded()) {
+    			List<Column> pkColumns = new ArrayList<Column>();
+				List<Column> columns = new ArrayList<Column>();
+	    		for (Column c: mdTable.getColumnTypes()) {
+	    			columns.add(c);
+	    			try {
+						for (String pk: mdTable.getPrimaryKeyColumns()) {
+							if (pk.equals(c.name)) {
+								pkColumns.add(c);
+								break;
+							}
+						}
+					} catch (SQLException e1) {
+						// ignore
+					}
+	    		}
+	    		PrimaryKey pks = new PrimaryKey(pkColumns, false);
+				Table tTable = new Table(mdTable.getName(), pks, false, false);
+	    		tTable.setColumns(columns);
+				panel.add(new TableDetailsView(tTable, mdTable, this, null, dataModel, null), gridBagConstraints);
+    		}
+    		gridBagConstraints = new java.awt.GridBagConstraints();
+	        gridBagConstraints.gridx = 1;
 	        gridBagConstraints.gridy = 3;
 	        gridBagConstraints.gridwidth = 1;
 	        gridBagConstraints.fill = java.awt.GridBagConstraints.NONE;
 	        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
     		panel.add(analyseButton, gridBagConstraints);
     		tableDetailsPanel.add(panel);
-    		if (tabbedPane.getSelectedIndex() == 0) {
-	    		if (!mdTable.getSchema().isDefaultSchema) {
-	    			boolean dmContainsSchema = false;
-	    			for (Table tab: dataModel.getTables()) {
-	    				String tabSchema = tab.getSchema("");
-	    				if (Quoting.equalsIgnoreQuotingAndCase(mdTable.getSchema().getName(), tabSchema)) {
-	    					dmContainsSchema = true;
-	    					break;
-	    				}
-	    			}
-	    			if (!dmContainsSchema) {
-	    				if (tabbedPane.getTabCount() > 1) {
-	    					tabbedPane.setSelectedIndex(1);
-	    				}
-	    			}
-	    		}
-    		}
     	}
 		tabbedPane.repaint();
+		if (onlyTable) {
+			return;
+		}
     	for (BlockingQueue<Runnable> queue: queues) {
     		queue.clear();
     	}
@@ -319,7 +337,7 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
 						return new ArrayList<RowBrowser>();
 					}
 					@Override
-					protected void findClosure(Row row, Set<Pair<BrowserContentPane, Row>> closure, boolean forward) {
+					protected void findClosure(Row row, Set<Pair<BrowserContentPane, Row>> closure, boolean forward, FindClosureContext findClosureContext) {
 					}
 					@Override
 					protected void findClosure(Row row) {
@@ -502,10 +520,19 @@ public abstract class MetaDataDetailsPanel extends javax.swing.JPanel {
     	    		public void run() {
     	    			try {
 							mdTable.getSchema().getConstraints(null);
-						} catch (SQLException e) {
-							// ignore
+	    	    			if (mdTable.getSchema().isConstraintsLoaded()) {
+	    	    	        	UIUtil.invokeLater(doRunGetConstraints);
+	    	    			}
+						} catch (final Throwable t) {
+							UIUtil.invokeLater(new Runnable() {
+								@Override
+								public void run() {
+									constraintsPanel.removeAll();
+			    					constraintsPanel.add(new JLabel(" Error: " + t.getMessage()));
+			        		    	tabbedPane.repaint();
+								}
+							});
 						}
-    	    			UIUtil.invokeLater(doRunGetConstraints);
     	    		}
     	    	}, 1);
     		}

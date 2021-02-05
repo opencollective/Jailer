@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,9 @@
 package net.sf.jailer.util;
 
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -40,7 +39,7 @@ public class CancellationHandler {
 	/**
 	 * List of all currently running statements per context.
 	 */
-	private static Map<Object, List<Statement>> currentStatements = new HashMap<Object, List<Statement>>();
+	private static Map<Object, IdentityHashMap<Statement, Statement>> currentStatements = new HashMap<Object, IdentityHashMap<Statement, Statement>>();
 	
 	/**
 	 * The logger.
@@ -89,14 +88,14 @@ public class CancellationHandler {
 	private static synchronized void synchronizedCancel(Object context) {
 		cancelled.add(context == null? DEFAULT_CONTEXT : context);
 		if (currentStatements.containsKey(context == null? DEFAULT_CONTEXT : context)) {
-			final List<Statement> toBeCanceled = new ArrayList<Statement>(currentStatements.get(context == null? DEFAULT_CONTEXT : context));
+			final IdentityHashMap<Statement, Statement> toBeCanceled = new IdentityHashMap<Statement, Statement>(currentStatements.get(context == null? DEFAULT_CONTEXT : context));
 			currentStatements.remove(context == null? DEFAULT_CONTEXT : context);
-			for (final Statement statement: toBeCanceled) {
+			for (final IdentityHashMap.Entry<Statement, Statement> statement: toBeCanceled.entrySet()) {
 				Thread thread = new Thread(new Runnable() {
 					@Override
 					public void run() {
 						try {
-							statement.cancel();
+							statement.getKey().cancel();
 						} catch (Exception e) {
 							// ignore
 						}
@@ -116,12 +115,12 @@ public class CancellationHandler {
 	 */
 	public static synchronized void begin(Statement statement, Object context) {
 		checkForCancellation(context);
-		List<Statement> sl = currentStatements.get(context == null? DEFAULT_CONTEXT : context);
+		IdentityHashMap<Statement, Statement> sl = currentStatements.get(context == null? DEFAULT_CONTEXT : context);
 		if (sl == null) {
-			sl = new ArrayList<Statement>();
+			sl = new IdentityHashMap<Statement, Statement>();
 			currentStatements.put(context == null? DEFAULT_CONTEXT : context, sl);
 		}
-		sl.add(statement);
+		sl.put(statement, statement);
 	}
 	
 	/**

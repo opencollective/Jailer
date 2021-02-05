@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,13 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.BlockingQueue;
@@ -42,12 +46,13 @@ import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
 import net.sf.jailer.ui.UIUtil;
+import net.sf.jailer.util.Pair;
 import net.sf.jailer.util.Quoting;
 import net.sf.jailer.util.SqlUtil;
 
 /**
  * Information about a database table.
- * 
+ *
  * @author Ralf Wisser
  */
 public class MDTable extends MDObject {
@@ -67,28 +72,27 @@ public class MDTable extends MDObject {
     private final boolean isView;
     private final boolean isSynonym;
 
-    public final Long estimatedRowCount;
+    private Long estimatedRowCount;
 
     // DDL of the table or <code>null</code>, if no DDL is available
     private volatile String ddl;
 
     /**
      * Constructor.
-     * 
+     *
      * @param name table name
      * @param schema the tables schema
      */
-    public MDTable(String name, MDSchema schema, boolean isView, boolean isSynonym, Long estimatedRowCount) {
+    public MDTable(String name, MDSchema schema, boolean isView, boolean isSynonym) {
         super(name, schema.getMetaDataSource());
         this.isView = isView;
         this.isSynonym = isSynonym;
         this.schema = schema;
-        this.estimatedRowCount = estimatedRowCount;
     }
 
     /**
      * Gets the schema the tables schema
-     * 
+     *
      * @return the schema the tables schema
      */
     public MDSchema getSchema() {
@@ -97,7 +101,7 @@ public class MDTable extends MDObject {
 
     /**
      * Gets columns of table
-     * 
+     *
      * @return columns of table
      */
     public List<String> getColumns() throws SQLException {
@@ -106,7 +110,7 @@ public class MDTable extends MDObject {
 
     /**
      * Gets columns of table
-     * 
+     *
      * @return columns of table
      */
     public List<String> getColumns(boolean cached) throws SQLException {
@@ -116,7 +120,7 @@ public class MDTable extends MDObject {
 
     /**
      * Gets columns of table. Waits until a given timeout and sets the wait cursor.
-     * 
+     *
      * @return columns of table
      */
     public List<String> getColumns(long timeOut, JComponent waitCursorSubject) throws SQLException {
@@ -154,7 +158,7 @@ public class MDTable extends MDObject {
 
     /**
      * Gets primary key columns of table
-     * 
+     *
      * @return primary key columns of table
      */
     public List<String> getPrimaryKeyColumns() throws SQLException {
@@ -163,7 +167,7 @@ public class MDTable extends MDObject {
 
     /**
      * Gets primary key columns of table
-     * 
+     *
      * @return primary key columns of table
      */
     public List<String> getPrimaryKeyColumns(boolean cached) throws SQLException {
@@ -179,7 +183,7 @@ public class MDTable extends MDObject {
             try {
                 MetaDataSource metaDataSource = getMetaDataSource();
                 synchronized (metaDataSource.getSession().getMetaData()) {
-                    ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(getSchema().getMetaDataSource().getSession(), getSchema().getMetaDataSource().getSession().getMetaData(), Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()), "%", 
+                    ResultSet resultSet = JDBCMetaDataBasedModelElementFinder.getColumns(getSchema().getMetaDataSource().getSession(), Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()), "%",
                     		cached, false, isSynonym? "SYNONYM" : null);
                     while (resultSet.next()) {
                         String colName = metaDataSource.getQuoting().quote(resultSet.getString(4));
@@ -188,11 +192,11 @@ public class MDTable extends MDObject {
                         int length = 0;
                         int precision = -1;
                         String sqlType;
-                        sqlType = SqlUtil.SQL_TYPE.get(type);
-                        if (sqlType == null) {
-                            sqlType = resultSet.getString(6);
+                        sqlType = resultSet.getString(6);
+                        if (sqlType == null || sqlType.length() == 0) {
+                        	sqlType = SqlUtil.SQL_TYPE.get(type);
                         }
-                        if (type == Types.NUMERIC || type == Types.DECIMAL || JDBCMetaDataBasedModelElementFinder.TYPES_WITH_LENGTH.contains(sqlType.toUpperCase()) || type == Types.NUMERIC || type == Types.DECIMAL || type == Types.VARCHAR || type == Types.CHAR || type == Types.BINARY || type == Types.VARBINARY) {
+                        if (type == Types.NUMERIC || type == Types.DECIMAL || JDBCMetaDataBasedModelElementFinder.TYPES_WITH_LENGTH.contains(sqlType.toUpperCase(Locale.ENGLISH)) || type == Types.NUMERIC || type == Types.DECIMAL || type == Types.VARCHAR || type == Types.CHAR || type == Types.BINARY || type == Types.VARBINARY) {
                             length = resultSet.getInt(7);
                         }
                         if (DBMS.MSSQL.equals(metaDataSource.getSession().dbms) && sqlType != null && sqlType.equalsIgnoreCase("timestamp")) {
@@ -211,13 +215,13 @@ public class MDTable extends MDObject {
                             length = 0;
                             precision = -1;
                         }
-                        Column column = new Column(colName, sqlType, JDBCMetaDataBasedModelElementFinder.filterLength(length, resultSet.getString(6), type, metaDataSource.getSession().dbms, resultSet.getInt(7)), precision);
+                        Column column = new Column(colName, JDBCMetaDataBasedModelElementFinder.filterType(sqlType, length, resultSet.getString(6), type, metaDataSource.getSession().dbms, resultSet.getInt(7)), JDBCMetaDataBasedModelElementFinder.filterLength(length, precision, resultSet.getString(6), type, metaDataSource.getSession().dbms, resultSet.getInt(7)), JDBCMetaDataBasedModelElementFinder.filterPrecision(length, precision, resultSet.getString(6), type, metaDataSource.getSession().dbms, resultSet.getInt(7)));
                         columnTypes.add(column);
                         column.isNullable = resultSet.getInt(11) == DatabaseMetaData.columnNullable;
                     }
                     resultSet.close();
-                    
-                    resultSet = JDBCMetaDataBasedModelElementFinder.getPrimaryKeys(getSchema().getMetaDataSource().getSession(), getSchema().getMetaDataSource().getSession().getMetaData(), Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()), false);
+
+                    resultSet = JDBCMetaDataBasedModelElementFinder.getPrimaryKeys(getSchema().getMetaDataSource().getSession(), Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()), false);
                     Map<Integer, String> pk = new TreeMap<Integer, String>();
                     int nextKeySeq = 0;
                     while (resultSet.next()) {
@@ -256,7 +260,7 @@ public class MDTable extends MDObject {
 
     /**
      * Compares data model table with this table.
-     * 
+     *
      * @param table the data model table
      * @return <code>true</code> iff table is uptodate
      */
@@ -306,18 +310,18 @@ public class MDTable extends MDObject {
                     }
                 }
             }
-        });
+        }, "Metadata-Tabledetails");
         thread.setDaemon(true);
         thread.start();
     }
 
     private static Object DDL_LOCK = new String("DDL_LOCK");
-    
+
     /**
      * Gets DDL of the table.
-     * 
+     *
      * @return DDL of the table or <code>null</code>, if no DDL is available
-     * @throws InterruptedException 
+     * @throws InterruptedException
      */
     public String getDDL() {
         if (ddlLoaded.get()) {
@@ -326,9 +330,9 @@ public class MDTable extends MDObject {
     	synchronized (DDL_LOCK) {
 	        if (!ddlLoaded.get()) {
 	            Session session = getSchema().getMetaDataSource().getSession();
-	
+
 	            String statement = session.dbms.getDdlCall();
-	
+
 	            if (statement != null) {
 	                CallableStatement cStmt = null;
 	                try {
@@ -347,7 +351,7 @@ public class MDTable extends MDObject {
 	                        }
 	                    }
 	                }
-	            }		
+	            }
 	            statement = session.dbms.getDdlQuery();
 	            if (statement != null) {
 	                Statement cStmt = null;
@@ -373,7 +377,7 @@ public class MDTable extends MDObject {
 	            if (ddl == null && isView) {
 	            	String viewTextOrDDLQuery = session.dbms.getViewTextOrDDLQuery();
 	    			if (viewTextOrDDLQuery != null) {
-	    				String viewTextQuery = String.format(viewTextOrDDLQuery, Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()));
+	    				String viewTextQuery = String.format(Locale.ENGLISH, viewTextOrDDLQuery, Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()));
 	    				try {
 	    					session.executeQuery(viewTextQuery, new Session.AbstractResultSetReader() {
 	    						@Override
@@ -388,11 +392,23 @@ public class MDTable extends MDObject {
 	            }
 	            if (ddl == null) {
 	                try {
+	                	readColumns(true); // load primary key
 	                	ddl = createDDL();
 		            } catch (Exception e) {
 		            	ddl = "-- DDL not available";
 	                	logger.info("error", e);
 		            }
+	            }
+	            if (ddl != null) {
+	            	ddl = ddl.trim();
+	            	if (!ddl.endsWith(";")) {
+	            		ddl += ";";
+	            	}
+	            	for (Entry<String, StringBuilder> e: getIndexDDL().entrySet()) {
+	            		if (e.getValue().length() > 0) {
+	            			ddl += "\n\n" + e.getValue() + ";";
+	            		}
+	            	}
 	            }
 	        }
 	        ddlLoaded.set(true);
@@ -400,13 +416,95 @@ public class MDTable extends MDObject {
     	}
     }
 
-    /**
+    private Map<String, StringBuilder> getIndexDDL() {
+    	Map<String, StringBuilder> result = new TreeMap<String, StringBuilder>();
+    	Map<String, List<Pair<Integer, String>>> columns = new TreeMap<String, List<Pair<Integer,String>>>();
+    	Session session = getSchema().getMetaDataSource().getSession();
+    	ResultSet rs = null;
+    	try {
+			rs = JDBCMetaDataBasedModelElementFinder.getIndexes(session, Quoting.staticUnquote(getSchema().getName()), Quoting.staticUnquote(getName()));
+			while (rs.next()) {
+				String indexName = rs.getString(6);
+				String schemaName = rs.getString(5);
+				String ascDesc = rs.getString(10);
+				boolean unique = !rs.getBoolean(4);
+
+				if (indexName != null) {
+					MDSchema schema = schemaName != null? getMetaDataSource().find(schemaName) : null;
+			        if (!result.containsKey(indexName)) {
+			        	result.put(indexName, new StringBuilder("CREATE " + (unique? "UNIQUE " : "") + "INDEX " + (schema == null || schema.isDefaultSchema? "" : (schema.getName() + ".")) + indexName + "\n"
+			        			+ "ON " + (getSchema().isDefaultSchema? "" : (getSchema().getName() + ".")) + getName() + " ("));
+			        }
+					List<Pair<Integer, String>> cols = columns.get(indexName);
+					if (cols == null) {
+						cols = new ArrayList<Pair<Integer,String>>();
+						columns.put(indexName, cols);
+					}
+					cols.add(new Pair<Integer, String>(rs.getInt(8), rs.getString(9) + ("D".equals(ascDesc)? " DESC" : "")));
+				}
+			}
+			rs.close();
+
+			for (Entry<String, StringBuilder> e: result.entrySet()) {
+	        	List<Pair<Integer, String>> cols = columns.get(e.getKey());
+	        	if (cols == null) {
+	        		e.getValue().setLength(0);
+	        	} else {
+	        		Collections.sort(cols, new Comparator<Pair<Integer, String>>() {
+						@Override
+						public int compare(Pair<Integer, String> o1, Pair<Integer, String> o2) {
+							int i1 = o1.a  == null? 0 : o1.a;
+							int i2 = o2.a  == null? 0 : o2.a;
+							return i1 - i2;
+						}
+					});
+	        		if (!primaryKey.isEmpty() && primaryKey.size() == cols.size()) {
+	        			boolean isPKIndex = true;
+	        			int i = 0;
+		        		for (Pair<Integer, String> col: cols) {
+	        				if (!Quoting.equalsIgnoreQuotingAndCase(primaryKey.get(i), col.b)) {
+	        					isPKIndex = false;
+	        					break;
+	        				}
+	        				++i;
+	        			}
+		        		if (isPKIndex) {
+			        		e.getValue().setLength(0);
+		        			continue;
+		        		}
+	        		}
+	        		boolean f = true;
+	        		for (Pair<Integer, String> col: cols) {
+	        			if (!f) {
+	        				e.getValue().append(", ");
+	        			}
+	        			e.getValue().append(getSchema().getMetaDataSource().getQuoting().quote(col.b));
+	        			f = false;
+	        		}
+	        		e.getValue().append(")");
+	        	}
+	        }
+		} catch (Throwable e) {
+			e.printStackTrace();
+			if (rs != null) {
+				try {
+					rs.close();
+				} catch (SQLException e1) {
+					// ignore
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
      * Creates DDL for this table.
-     * 
+     *
      * @return DDL for this table
      */
     private String createDDL() {
-        StringBuilder sb = new StringBuilder("CREATE TABLE " + getName() + " (\n");
+        StringBuilder sb = new StringBuilder("CREATE TABLE " + (getSchema().isDefaultSchema? "" : (getSchema().getName() + ".")) + getName() + " (\n");
     	String nullableContraint = getMetaDataSource().getSession().dbms.getNullableContraint();
     	boolean prepComma = false;
         for (Column column: columnTypes)  {
@@ -426,7 +524,22 @@ public class MDTable extends MDObject {
         	if (prepComma) {
         		sb.append(",\n");
         	}
-        	sb.append("    CONSTRAINT " + (pkConstraintName == null? "" : pkConstraintName) + " PRIMARY KEY (");
+        	sb.append("    ");
+        	if (pkConstraintName == null) {
+            	sb.append("-- ");
+        	}
+        	sb.append("CONSTRAINT ");
+        	if (pkConstraintName == null) {
+            	sb.append(getName());
+        		if (getName() != null && getName().toLowerCase().equals(getName())) {
+                	sb.append("_pk");
+        		} else {
+        			sb.append("_PK");
+        		}
+        	} else {
+            	sb.append(pkConstraintName);
+        	}
+        	sb.append(" PRIMARY KEY (");
         	prepComma = false;
         	for (String pk: primaryKey) {
         		if (prepComma) {
@@ -441,10 +554,22 @@ public class MDTable extends MDObject {
         return sb.toString();
     }
 
+    public List<Column> getColumnTypes() {
+		return columnTypes;
+	}
+
     public boolean isDDLLoaded() {
         return ddlLoaded.get();
     }
-    
+
+    public Long getEstimatedRowCount() {
+		return estimatedRowCount;
+	}
+
+    public void setEstimatedRowCount(Long erc) {
+		estimatedRowCount = erc;
+	}
+
     private AtomicBoolean ddlLoaded = new AtomicBoolean(false);
-    
+
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,13 +28,13 @@ import net.sf.jailer.ui.AssociationListUI.DefaultAssociationModel;
 
 /**
  * Restricted Dependencies List Dialog.
- * 
+ *
  * @author Ralf Wisser
  */
 public abstract class RestrictedDependenciesListDialog extends ClosureBorderDialog {
 
 	private static final long serialVersionUID = -7151994890007647782L;
-	
+
 	/** Creates new form ClosureBorderDialog */
 	public RestrictedDependenciesListDialog(java.awt.Frame parent) {
 		super(parent, false);
@@ -57,7 +57,9 @@ public abstract class RestrictedDependenciesListDialog extends ClosureBorderDial
 				for (Association association: table.associations) {
 					if (association.getRestrictionCondition() != null) {
 						if (association.isInsertDestinationBeforeSource()) {
-							restDeps.add(association);
+							if (!association.isRestrictedDependencyWithNulledFK()) {
+								restDeps.add(association);
+							}
 						}
 					}
 				}

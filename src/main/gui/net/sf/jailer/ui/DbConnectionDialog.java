@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,15 +18,17 @@ package net.sf.jailer.ui;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Font;
-import java.awt.Image;
 import java.awt.Point;
 import java.awt.Window;
 import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -41,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JTable;
@@ -119,6 +122,18 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		public ConnectionInfo(ExecutionContext executionContext) {
 			dataModelFolder = DataModelManager.getCurrentModelSubfolder(executionContext);
 		}
+		
+		public void assign(ConnectionInfo ci) {
+			alias = ci.alias;
+			driverClass = ci.driverClass;
+			url = ci.url;
+			user = ci.user;
+			password = ci.password;
+			jar1 = ci.jar1;
+			jar2 = ci.jar2;
+			jar3 = ci.jar3;
+			jar4 = ci.jar4;
+		}
 	}
 
 	/**
@@ -185,6 +200,9 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			setTitle((reason == null ? "" : (reason + " - ")) + "Connect.");
 			sortConnectionList();
 			refresh();
+			if (connectionsTable.getModel().getRowCount() > 0) {
+				connectionsTable.getSelectionModel().setSelectionInterval(0, 0);
+			}
 			setVisible(true);
 			if (currentConnection == null) {
 				isConnected = false;
@@ -279,7 +297,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 							boolean hasFocus, int row, int column) {
 						Component render = defaultTableCellRenderer
 								.getTableCellRendererComponent(table, value,
-										isSelected, hasFocus, row, column);
+										isSelected, false /* hasFocus */, row, column);
 						if (render instanceof JLabel) {
 							if (!isSelected) {
 								final Color BG1 = new Color(255, 255, 255);
@@ -307,6 +325,38 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 						return render;
 					}
 				});
+		
+		KeyListener keyListener = new KeyListener() {
+            @Override
+            public void keyTyped(KeyEvent e) {
+            }
+            
+            @Override
+            public void keyReleased(KeyEvent e) {
+            }
+            
+            @Override
+            public void keyPressed(KeyEvent e) {
+            	int delta = 0;
+                if (e.getKeyCode() == KeyEvent.VK_UP) {
+                	delta = -1;
+                } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                	delta = 1;
+                }
+                if (delta != 0) {
+                	int selectedRow = connectionsTable.getSelectedRow();
+                	if (selectedRow >= 0) {
+                		selectedRow += delta;
+            			if (selectedRow >= 0 && selectedRow < connectionsTable.getRowCount()) {
+            				connectionsTable.getSelectionModel().setSelectionInterval(selectedRow, selectedRow);
+                		}
+                	}
+                }
+            }
+        };
+        jButton1.addKeyListener(keyListener);
+        closeButton.addKeyListener(keyListener);
+		
 		connectionsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		connectionsTable.getSelectionModel().addListSelectionListener(
 				new ListSelectionListener() {
@@ -367,6 +417,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	/**
 	 * Initializes the table model.
 	 */
+	@SuppressWarnings("rawtypes")
 	private Object[][] initTableModel() {
 		Object[][] data = new Object[connectionList.size()][];
 		int i = 0;
@@ -385,6 +436,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			}
 			private static final long serialVersionUID = 1535384744352159695L;
 		};
+		@SuppressWarnings("unchecked")
 		List<? extends SortKey> sortKeys = new ArrayList(connectionsTable.getRowSorter().getSortKeys());
 		connectionsTable.setModel(tableModel);
 		try {
@@ -406,7 +458,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		if (inRefresh) return;
 		inRefresh = true;
 		try {
-			int selectedRow = connectionsTable.getSelectedRow();
+			final int selectedRow = connectionsTable.getSelectedRow();
 			Object[][] data = initTableModel();
 			RowSorter<?> rowSorter = connectionsTable.getRowSorter();
 			int selectedRowIndex = -1;
@@ -435,7 +487,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 									 getTableCellRendererComponent(
 											 connectionsTable, data[line][i],
 										 false, false, line, i);
-					width = Math.max(width, Math.min(250, comp.getPreferredSize().width));
+					width = Math.max(width, Math.min(220, comp.getPreferredSize().width));
 				}
 				
 				column.setPreferredWidth(width);
@@ -563,7 +615,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 						}
 					}
 				}
-			} catch (Exception e) {
+			} catch (Throwable e) {
 				// ignore
 			}
 		}
@@ -648,6 +700,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
     private void initComponents() {
         java.awt.GridBagConstraints gridBagConstraints;
 
+        jPanel1 = new javax.swing.JPanel();
         mainPanel = new javax.swing.JPanel();
         jPanel2 = new javax.swing.JPanel();
         restoreLastSessionButton = new javax.swing.JButton();
@@ -668,6 +721,8 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         setTitle("Connect with DB");
         getContentPane().setLayout(new java.awt.CardLayout());
+
+        jPanel1.setLayout(new java.awt.GridBagLayout());
 
         mainPanel.setLayout(new java.awt.GridBagLayout());
 
@@ -790,6 +845,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         gridBagConstraints.gridx = 10;
         gridBagConstraints.gridy = 20;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTH;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 4);
         mainPanel.add(jPanel3, gridBagConstraints);
 
         infoBarLabel.setText("info bar");
@@ -832,7 +888,17 @@ public class DbConnectionDialog extends javax.swing.JDialog {
         gridBagConstraints.weighty = 1.0;
         mainPanel.add(jPanel4, gridBagConstraints);
 
-        getContentPane().add(mainPanel, "card2");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 4, 0);
+        jPanel1.add(mainPanel, gridBagConstraints);
+
+        getContentPane().add(jPanel1, "card2");
+        jPanel1.getAccessibleContext().setAccessibleName("");
 
         pack();
     }// </editor-fold>//GEN-END:initComponents
@@ -892,28 +958,29 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 
 	private void newButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_newButtonActionPerformed
 		ConnectionInfo ci = new ConnectionInfo(executionContext);
+		final String DRIVERLIST_FILE = "driverlist.csv";
+		File csvFile = Environment.newWorkingFolderFile(DRIVERLIST_FILE);
+
 		try {
-			CsvFile drivers = new CsvFile(new File("driverlist.csv"));
+			// check existence of "driverlist.csv"
+			FileInputStream is = new FileInputStream(csvFile);
+			is.close();
+			
+			CsvFile drivers = new CsvFile(csvFile);
 			List<Line> lines = new ArrayList<Line>(drivers.getLines());
-			Collections.sort(lines, new Comparator<Line>() {
-				@Override
-				public int compare(Line o1, Line o2) {
-					return o1.cells.get(0).compareTo(o2.cells.get(0));
-				}
-			});
-			List<String> dbmsNames = new ArrayList<String>();
-			for (Line line: lines) {
-				if (line.cells.get(0).length() > 0) {
-					dbmsNames.add(line.cells.get(0));
-				}
+
+			Component root = SwingUtilities.getWindowAncestor(mainPanel);
+			if (root == null) {
+				root = mainPanel;
 			}
-			String s = (String) JOptionPane.showInputDialog(this,
-					"Select DBMS", "Select DBMS",
-					JOptionPane.QUESTION_MESSAGE, null, dbmsNames.toArray(), dbmsNames.get(0));
+			Pair<String, String> s = new DbConnectionSettings(root).edit(lines);
 			if (s == null) return;
 			for (Line line: lines) {
-				if (line.cells.get(0).equals(s)) {
-					ci.url = line.cells.get(1);
+				if (line.cells.get(0).equals(s.a)) {
+					ci.url = s.b;
+					if (ci.url == null) {
+						return;
+					}
 					ci.driverClass = line.cells.get(2);
 					String[] jars = line.cells.get(3).replace("/", File.separator).split(" ");
 					if (jars.length > 0) {
@@ -922,10 +989,48 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 					if (jars.length > 1) {
 						ci.jar2 = jars[1];
 					}
-					ci.alias = s;
+					ci.alias = s.a;
+					break;
 				}
 			}
+		} catch (FileNotFoundException e) {
+			StringBuilder info = new StringBuilder();
+			List<String> fileList = new ArrayList<String>();
+			try {
+				info.append(csvFile.getAbsolutePath() + ": ");
+				File[] files = csvFile.getAbsoluteFile().getParentFile().listFiles();
+				if (files == null) {
+					info.append("null");
+				} else {
+					for (File file: files) {
+						String ord;
+						String name = file.getName();
+						if (!file.exists()) {
+							ord = "1";
+						} else {
+							ord = "2";
+						}
+						int state = 0;
+						state += file.exists()? 1 : 0;
+						state += file.isFile()? 2 : 0;
+						state += file.isDirectory()? 4 : 0;
+						fileList.add(ord + name + "/" + Integer.toHexString(state));
+						if (DRIVERLIST_FILE.equalsIgnoreCase(name)) {
+							ord = "0";
+							fileList.add(ord + "!" + name + "/" + Integer.toHexString(state));
+						}
+					}
+				}
+				Collections.sort(fileList);
+				for (int i = 0; i < fileList.size(); ++i) {
+					fileList.set(i, fileList.get(i).substring(1));
+				}
+			} catch (Throwable t) {
+				info.append(" err: " + t.getMessage() + ": ");
+			}
+			UIUtil.showException(this, "Error", new FileNotFoundException(e.getMessage() + " / (" + info + fileList + ")"));
 		} catch (Exception e) {
+			UIUtil.showException(this, "Error", e);
 		}
 		if (edit(ci, true)) {
 			for (int nr = 1; ; ++nr) {
@@ -997,7 +1102,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		}
 		try {
 			UIUtil.setWaitCursor(root);
-			if (testConnection(mainPanel, currentConnection)) {
+			if (testConnection(mainPanel, currentConnection, null)) {
 				isConnected = true;
 				executionContext.setCurrentConnectionAlias(currentConnection.alias);
 				onConnect(currentConnection);
@@ -1011,12 +1116,6 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	}
 
 	protected void onConnect(ConnectionInfo currentConnection) {
-		if (currentConnection != null && currentConnection.url != null) {
-			if (currentConnection.url.toLowerCase().startsWith("jdbc:jtds:")) {
-				JOptionPane.showMessageDialog(this, "The jTDS JDBC Driver is no longer supported.");
-				return;
-			}
-		}
 		setVisible(false);
 	}
 
@@ -1024,7 +1123,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		connect();
 	}// GEN-LAST:event_jButton1ActionPerformed
 
-	public static boolean testConnection(Component parent, ConnectionInfo ci) {
+	public static boolean testConnection(Component parent, ConnectionInfo ci, JButton downloadButton) {
 		String d1 = ci.jar1.trim();
 		String d2 = ci.jar2.trim();
 		String d3 = ci.jar3.trim();
@@ -1052,7 +1151,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		try {
 			Window w = parent instanceof Window? (Window) parent : SwingUtilities.getWindowAncestor(parent);
 			BasicDataSource dataSource = UIUtil.createBasicDataSource(w, ci.driverClass, ci.url, ci.user, ci.password, 0, urls);
-			SessionForUI session = SessionForUI.createSession(dataSource, dataSource.dbms, null, w);
+			SessionForUI session = SessionForUI.createSession(dataSource, dataSource.dbms, null, true, w);
 			String databaseProductName = null;
 			if (session != null) {
 				try {
@@ -1089,10 +1188,11 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 			}
 			return false;
 		} catch (Throwable e) {
-			if (e.getCause() instanceof ClassNotFoundException) {
-				UIUtil.showException(parent, "Could not connect to DB", new ClassNotFoundException("JDBC driver class not found: '" + e.getMessage() + "'", e.getCause()), UIUtil.EXCEPTION_CONTEXT_USER_ERROR);
+			if (e.getCause() instanceof ClassNotFoundException && e.getCause().getMessage() != null && e.getCause().getMessage().contains(ci.driverClass)) {
+				UIUtil.showException(parent, "Unable to connect", new ClassNotFoundException("JDBC driver class not found: '" + ci.driverClass + "'"
+						+ (downloadButton == null? "" : ".\nYou can download the driver with the button \"Download Driver\".")), UIUtil.EXCEPTION_CONTEXT_MB_USER_ERROR, downloadButton);
 			} else {
-				UIUtil.showException(parent, "Could not connect to DB (" + (e.getClass().getSimpleName()) + ")", e, UIUtil.EXCEPTION_CONTEXT_USER_ERROR);
+				UIUtil.showException(parent, "Unable to connect (" + (e.getClass().getSimpleName()) + ")", e, UIUtil.EXCEPTION_CONTEXT_MB_USER_ERROR);
 			}
 			return false;
 		}
@@ -1202,6 +1302,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
     private javax.swing.JButton jButton1;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
+    private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel2;
     private javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
@@ -1242,11 +1343,11 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 	}
 
     private ImageIcon getScaledWarnIcon() {
-        if (scaledWarnIcon == null) {
+        if (scaledWarnIcon == null && warnIcon != null) {
             int heigth = getFontMetrics(new JLabel("M").getFont()).getHeight();
             double s = heigth / (double) warnIcon.getIconHeight();
             try {
-            	scaledWarnIcon = new ImageIcon(warnIcon.getImage().getScaledInstance((int)(warnIcon.getIconWidth() * s), (int)(warnIcon.getIconHeight() * s), Image.SCALE_SMOOTH));
+            	scaledWarnIcon = UIUtil.scaleIcon(warnIcon, s);
             } catch (Exception e) {
             	logger.info("error", e);
                 return null;
@@ -1266,9 +1367,9 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		ci.dataModelFolder = cli.datamodelFolder;
 		ci.driverClass = cli.driver;
 		ci.jar1 = cli.jdbcjar != null? cli.jdbcjar : "";
-		ci.jar2 = cli.jdbcjar2 != null? cli.jdbcjar2 : "";;
-		ci.jar3 = cli.jdbcjar3 != null? cli.jdbcjar3 : "";;
-		ci.jar4 = cli.jdbcjar4 != null? cli.jdbcjar4 : "";;
+		ci.jar2 = cli.jdbcjar2 != null? cli.jdbcjar2 : "";
+		ci.jar3 = cli.jdbcjar3 != null? cli.jdbcjar3 : "";
+		ci.jar4 = cli.jdbcjar4 != null? cli.jdbcjar4 : "";
 		ci.url = cli.url;
 		ci.user = cli.user;
 		ci.password = cli.password;
@@ -1276,7 +1377,7 @@ public class DbConnectionDialog extends javax.swing.JDialog {
 		if (ci.driverClass != null
 				&& ci.url != null
 				&& ci.user != null) {
-			if (testConnection(parent, ci)) {
+			if (testConnection(parent, ci, null)) {
 				currentConnection = ci;
 				executionContext.setCurrentConnectionAlias(currentConnection.alias);
 				isConnected = true;
@@ -1294,14 +1395,8 @@ public class DbConnectionDialog extends javax.swing.JDialog {
     private static ImageIcon warnIcon;
     private static ImageIcon scaledWarnIcon;
     static {
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            warnIcon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/wanr.png"));
- 	    } catch (Exception e) {
-	    	logger.info("error", e);
-	        e.printStackTrace();
-	    }
+    	warnIcon = UIUtil.readImage("/wanr.png");
 	}
+
 }

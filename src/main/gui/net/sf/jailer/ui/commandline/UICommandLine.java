@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,6 +58,9 @@ public class UICommandLine {
 	@Option(name="-password", usage="Database password.")
 	public String password = null;
 	
+	@Option(name="-file-lookup", usage="read the next parameter from the (1st line of the) file named VAL. \n(This is especially useful for not making passwords visible by querying the command line parameters)")
+	public List<String> parameterFile = new ArrayList<String>();
+
 	@Option(name="-bookmark", usage="Bookmark to open.")
 	public String bookmark = null;
 

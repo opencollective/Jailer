@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package net.sf.jailer.ui;
 import java.awt.Color;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import javax.swing.event.DocumentEvent;
@@ -43,7 +44,7 @@ public class NewDataModelDialog extends javax.swing.JDialog {
 		this.existingFoldersLC = new HashSet<String>();
 		
 		for (String s: existingFolders) {
-			existingFoldersLC.add(s.toLowerCase());
+			existingFoldersLC.add(s.toLowerCase(Locale.ENGLISH));
 		}
 		
 		initComponents();
@@ -84,7 +85,7 @@ public class NewDataModelDialog extends javax.swing.JDialog {
 			folderTextField.setForeground(initialFGColor);
 			return false;
 		} else {
-			if (existingFoldersLC.contains(folderTextField.getText().toLowerCase())) {
+			if (existingFoldersLC.contains(folderTextField.getText().toLowerCase(Locale.ENGLISH))) {
 				createButton.setEnabled(false);
 				folderTextField.setForeground(red);
 				return false;

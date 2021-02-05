@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 package net.sf.jailer.configuration;
+
+import java.util.Locale;
 
 import net.sf.jailer.ExecutionContext;
 
@@ -69,7 +71,7 @@ public class LimitTransactionSizeInfo {
 	 */
 	public String afterSelectFragment(ExecutionContext executionContext) {
 		if (afterSelect != null && !afterSelect.trim().isEmpty() && isApplicable(executionContext)) {
-			return String.format(afterSelect, limit) + " ";
+			return String.format(Locale.ENGLISH, afterSelect, limit) + " ";
 		} else {
 			return "";
 		}
@@ -82,7 +84,7 @@ public class LimitTransactionSizeInfo {
 	 */
 	public String additionalWhereConditionFragment(ExecutionContext executionContext) {
 		if (additionalWhereCondition != null && !additionalWhereCondition.trim().isEmpty() && isApplicable(executionContext)) {
-			return "and " + String.format(additionalWhereCondition, limit) + " ";
+			return "and " + String.format(Locale.ENGLISH, additionalWhereCondition, limit) + " ";
 		} else {
 			return "";
 		}
@@ -95,7 +97,7 @@ public class LimitTransactionSizeInfo {
 	 */
 	public String statementSuffixFragment(ExecutionContext executionContext) {
 		if (statementSuffix != null && !statementSuffix.trim().isEmpty() && isApplicable(executionContext)) {
-			return String.format(statementSuffix, limit) + " ";
+			return String.format(Locale.ENGLISH, statementSuffix, limit) + " ";
 		} else {
 			return "";
 		}

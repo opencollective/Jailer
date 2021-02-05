@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public class PathGraph {
 	private Map<Pair<Node, Node>, EdgeType> edgeTypes = new HashMap<Pair<Node, Node>, EdgeType>();
 	private Set<Table> visitedExcludedTables = new HashSet<Table>();
 
-	public enum EdgeType { PARENT, CHILD, ASSOCIATION, IGNORED };
+	public enum EdgeType { PARENT, CHILD, ASSOCIATION, IGNORED }
 	
 	public class Node {
 		Table table;

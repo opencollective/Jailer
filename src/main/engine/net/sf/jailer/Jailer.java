@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,19 @@
  */
 package net.sf.jailer;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.StringReader;
+import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogManager;
 
 import javax.sql.DataSource;
 
@@ -36,43 +37,42 @@ import net.sf.jailer.configuration.Configuration;
 import net.sf.jailer.configuration.DBMS;
 import net.sf.jailer.database.BasicDataSource;
 import net.sf.jailer.database.Session;
-import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.PrimaryKeyFactory;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ddl.DDLCreator;
-import net.sf.jailer.domainmodel.DomainModel;
-import net.sf.jailer.entitygraph.EntityGraph;
+import net.sf.jailer.extractionmodel.ExtractionModel;
+import net.sf.jailer.extractionmodel.ExtractionModel.AdditionalSubject;
 import net.sf.jailer.modelbuilder.ModelBuilder;
 import net.sf.jailer.progress.ProgressListener;
 import net.sf.jailer.render.DataModelRenderer;
+import net.sf.jailer.render.HtmlDataModelRenderer;
 import net.sf.jailer.restrictionmodel.RestrictionModel;
 import net.sf.jailer.subsetting.SubsettingEngine;
 import net.sf.jailer.util.CancellationException;
 import net.sf.jailer.util.CancellationHandler;
 import net.sf.jailer.util.ClasspathUtil;
 import net.sf.jailer.util.LogUtil;
-import net.sf.jailer.util.PrintUtil;
+import net.sf.jailer.util.Quoting;
 import net.sf.jailer.util.SqlScriptExecutor;
-import net.sf.jailer.util.SqlUtil;
 
 /**
  * Jailer is a tool for database subsetting and relational data browsing. <br>
  * <ul>
  * <li>
- * The Subsetter exports consistent, referentially intact row-sets from relational databases, 
- * generates topologically sorted SQL-DML, DbUnit datasets 
+ * The Subsetter exports consistent, referentially intact row-sets from relational databases,
+ * generates topologically sorted SQL-DML, DbUnit datasets
  * and hierarchically structured XML.
  * </li>
  * <li>
- * The Data Browser allows bidirectional navigation through the database 
+ * The Data Browser allows bidirectional navigation through the database
  * by following foreign-key-based or user-defined relationships.
  * </li>
  * </ul>
- * 
+ *
  * <a href="http://jailer.sourceforge.net/">http://jailer.sourceforge.net</a> <br>
  * <a href="https://github.com/Wisser/Jailer">https://github.com/Wisser/Jailer</a> <br><br>
- * 
+ *
  * @author Ralf Wisser
  */
 public class Jailer {
@@ -80,11 +80,21 @@ public class Jailer {
 	/**
 	 * The logger.
 	 */
-	private static final Logger _log = Logger.getLogger(Jailer.class);
+	private static Logger logger;
+
+	/**
+	 * Gets the logger.
+	 */
+	private static synchronized Logger getLogger() {
+		if (logger == null) {
+			logger = Logger.getLogger(Jailer.class);
+		}
+		return logger;
+	}
 
 	/**
 	 * Main-method for CLI.
-	 * 
+	 *
 	 * @param args arguments
 	 */
 	public static void main(String[] args) {
@@ -104,14 +114,32 @@ public class Jailer {
 			}
 		});
 
-		if (new File(".singleuser").exists() // legacy 
+		try {
+			java.util.logging.Logger rootLogger = LogManager.getLogManager().getLogger("");
+			rootLogger.setLevel(Level.OFF);
+			for (Handler h : rootLogger.getHandlers()) {
+			    h.setLevel(Level.OFF);
+			}
+			System.setProperty("com.sun.xml.bind.v2.bytecode.ClassTailor.noOptimize", "true");
+		} catch (Exception e) {
+		}
+
+		if (new File(".singleuser").exists() // legacy
 				|| new File(".multiuser").exists()) {
 			File home = new File(System.getProperty("user.home"), ".jailer");
 			home.mkdirs();
 			LogUtil.reloadLog4jConfig(home);
 			Configuration configuration = Configuration.getInstance();
 			configuration.setTempFileFolder(new File(home, "tmp").getPath());
+			try {
+				HtmlDataModelRenderer renderer = configuration.getRenderer();
+				if (renderer != null) {
+					renderer.setOutputFolder(new File(home, renderer.getOutputFolder()).getAbsolutePath());
+				}
+			} catch (Exception e) {
+			}
 		}
+		getLogger();
 		try {
 			System.setProperty("db2.jcc.charsetDecoderEncoder", "3");
 		} catch (Exception e) {
@@ -137,7 +165,7 @@ public class Jailer {
 
 	/**
 	 * Main-method for GUI.
-	 * 
+	 *
 	 * @param args
 	 *            arguments
 	 * @param warnings
@@ -147,6 +175,7 @@ public class Jailer {
 	 */
 	public static boolean jailerMain(String[] args, StringBuffer warnings, ProgressListener progressListener, boolean fromCli) throws Exception {
 		CancellationHandler.reset(null);
+		String pw = null;
 
 		try {
 			CommandLine commandLine = CommandLineParser.parse(args, false);
@@ -158,38 +187,31 @@ public class Jailer {
 			if (progressListener != null) {
 				executionContext.getProgressListenerRegistry().addProgressListener(progressListener);
 			}
-			
+
 			String command = commandLine.arguments.get(0);
 			if (!"create-ddl".equalsIgnoreCase(command)) {
-				if (!"find-association".equalsIgnoreCase(command)) {
-					_log.info("Jailer " + JailerVersion.VERSION);
+				if (!"print-closure".equalsIgnoreCase(command)) {
+					getLogger().info("Jailer " + JailerVersion.VERSION);
 				}
 			}
-			
+
 			URL[] jdbcJarURLs = ClasspathUtil.toURLArray(commandLine.jdbcjar, commandLine.jdbcjar2, commandLine.jdbcjar3, commandLine.jdbcjar4);
 
-			if ("check-domainmodel".equalsIgnoreCase(command)) {
-				DataModel dataModel = new DataModel(executionContext);
-				for (String rm : commandLine.arguments.subList(1, commandLine.arguments.size())) {
-					if (dataModel.getRestrictionModel() == null) {
-						dataModel.setRestrictionModel(new RestrictionModel(dataModel, executionContext));
-					}
-					URL modelURL = new File(rm).toURI().toURL();
-					dataModel.getRestrictionModel().addRestrictionDefinition(modelURL, new HashMap<String, String>());
-				}
-				new DomainModel(dataModel).check();
-			} else if ("render-datamodel".equalsIgnoreCase(command)) {
-				if (commandLine.arguments.size() <= 1) {
-					CommandLineParser.printUsage();
+			if ("render-datamodel".equalsIgnoreCase(command)) {
+				if (commandLine.arguments.size() > 2) {
+					CommandLineParser.printUsage(args);
 				} else {
-					renderDataModel(commandLine.arguments, commandLine.withClosures, commandLine.schema, executionContext);
+					if (commandLine.arguments.size() > 1) {
+						updateDataModelFolder(commandLine, commandLine.arguments.get(1), executionContext);
+					}
+					renderDataModel(commandLine.arguments, commandLine.schema, executionContext);
 				}
 			} else if ("import".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 6) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4),
-							commandLine.arguments.get(5), 0, jdbcJarURLs);
+							pw = commandLine.arguments.get(5), 0, jdbcJarURLs);
 					Session session = new Session(dataSource, dataSource.dbms, commandLine.isolationLevel, null, commandLine.transactional);
 					try {
 						new SqlScriptExecutor(session, commandLine.numberOfThreads, false).executeScript(commandLine.arguments.get(1), commandLine.transactional);
@@ -201,21 +223,17 @@ public class Jailer {
 						}
 					}
 				}
-			} else if ("print-datamodel".equalsIgnoreCase(command)) {
-				printDataModel(commandLine.arguments, commandLine.withClosures, executionContext);
 			} else if ("export".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 6) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
-					if (commandLine.maxNumberOfEntities > 0) {
-						EntityGraph.maxTotalRowcount = commandLine.maxNumberOfEntities;
-						_log.info("max-rowcount=" + EntityGraph.maxTotalRowcount);
-					}
-					
+					pw = commandLine.arguments.get(5);
+
 					if (commandLine.exportScriptFileName == null) {
 						System.out.println("missing '-e' option");
-						CommandLineParser.printUsage();
+						CommandLineParser.printUsage(args);
 					} else {
+						updateDataModelFolder(commandLine, commandLine.arguments.get(1), executionContext);
 						if (!commandLine.independentWorkingTables) {
 							PrimaryKeyFactory.createUPKScope(commandLine.arguments.get(1), executionContext);
 						}
@@ -224,17 +242,19 @@ public class Jailer {
 								commandLine.arguments.get(4), commandLine.arguments.get(5), 0, jdbcJarURLs);
 						URL modelURL = new File(commandLine.arguments.get(1)).toURI().toURL();
 						new SubsettingEngine(executionContext).export(commandLine.where, modelURL, commandLine.exportScriptFileName, commandLine.deleteScriptFileName,
-								dataSource, dataSource.dbms, commandLine.explain, executionContext.getScriptFormat(), 0);
+								dataSource, dataSource.dbms, executionContext.getScriptFormat(), 0);
 					}
 				}
 			} else if ("delete".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 6) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
+					pw = commandLine.arguments.get(5);
 					if (commandLine.deleteScriptFileName == null) {
-						System.out.println("missing '-d' option");
-						CommandLineParser.printUsage();
+						System.out.println("can't delete: missing '-d' option");
+						CommandLineParser.printUsage(args);
 					} else {
+						updateDataModelFolder(commandLine, commandLine.arguments.get(1), executionContext);
 						BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(2), commandLine.arguments.get(3),
 								commandLine.arguments.get(4), commandLine.arguments.get(5), 0, jdbcJarURLs);
 						// note we are passing null for script format and the export script name, as we are using the export tool
@@ -244,14 +264,15 @@ public class Jailer {
 						}
 						URL modelURL = new File(commandLine.arguments.get(1)).toURI().toURL();
 						new SubsettingEngine(executionContext).export(commandLine.where, modelURL, /* clp.exportScriptFileName*/ null, commandLine.deleteScriptFileName,
-								dataSource, dataSource.dbms, commandLine.explain, /*scriptFormat*/ null, 0);
+								dataSource, dataSource.dbms, /*scriptFormat*/ null, 0);
 					}
 				}
-			} else if ("find-association".equalsIgnoreCase(command)) {
-				if (commandLine.arguments.size() < 3) {
-					CommandLineParser.printUsage();
+			} else if ("print-closure".equalsIgnoreCase(command)) {
+				if (commandLine.arguments.size() < 2) {
+					CommandLineParser.printUsage(args);
 				} else {
-					findAssociation(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.subList(3, commandLine.arguments.size()), commandLine.undirected, executionContext);
+					updateDataModelFolder(commandLine, commandLine.arguments.get(1), executionContext);
+					printClosure(commandLine.arguments.get(1), commandLine.arguments.size() > 2? commandLine.arguments.get(2) : null, executionContext);
 				}
 			} else if ("create-ddl".equalsIgnoreCase(command)) {
 				String extractionModelFileName = null;
@@ -260,12 +281,17 @@ public class Jailer {
 				} else if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
 					extractionModelFileName = commandLine.arguments.get(1);
 				}
-				if ("datamodel".equals(commandLine.datamodelFolder) && extractionModelFileName == null
-						||
-					!"datamodel".equals(commandLine.datamodelFolder) && extractionModelFileName != null) {
-					if (fromCli) {
-						throw new RuntimeException("Please specify either a data model (e.g., \"-datamodel datamodel/Demo-Scott\") or an extraction model (But not both)");
+				updateDataModelFolder(commandLine, extractionModelFileName, executionContext);
+				if (commandLine.arguments.size() >= 5) {
+					pw = commandLine.arguments.get(4);
+					if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 5) {
+						PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
 					}
+					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
+					return new DDLCreator(executionContext).createDDL(dataSource, dataSource.dbms, executionContext.getScope(), commandLine.workingTableSchema);
+				}
+				if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
+					PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
 				}
 				if (commandLine.targetDBMS == null) {
 					List<DBMS> dbmss = Configuration.getInstance().getDBMS();
@@ -278,57 +304,95 @@ public class Jailer {
 					}
 					System.err.println("");
 				}
-				if (commandLine.arguments.size() >= 5) {
-					if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 5) {
-						PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
-					}
-					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
-					return new DDLCreator(executionContext).createDDL(dataSource, dataSource.dbms, executionContext.getScope(), commandLine.workingTableSchema);
-				}
-				if (!commandLine.independentWorkingTables && commandLine.arguments.size() > 1) {
-					PrimaryKeyFactory.createUPKScope(extractionModelFileName, executionContext);
-				}
 				return new DDLCreator(executionContext).createDDL((DataSource) null, null, executionContext.getScope(), commandLine.workingTableSchema);
 			} else if ("build-model-wo-merge".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 5) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
-					_log.info("Building data model.");
+					pw = commandLine.arguments.get(4);
+					getLogger().info("Building data model.");
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
 					ModelBuilder.build(dataSource, dataSource.dbms, commandLine.schema, warnings, executionContext);
 				}
 			} else if ("build-model".equalsIgnoreCase(command)) {
 				if (commandLine.arguments.size() != 5) {
-					CommandLineParser.printUsage();
+					CommandLineParser.printUsage(args);
 				} else {
-					_log.info("Building data model.");
+					pw = commandLine.arguments.get(4);
+					getLogger().info("Building data model.");
 					BasicDataSource dataSource = new BasicDataSource(commandLine.arguments.get(1), commandLine.arguments.get(2), commandLine.arguments.get(3), commandLine.arguments.get(4), 0, jdbcJarURLs);
 					ModelBuilder.buildAndMerge(dataSource, dataSource.dbms, commandLine.schema, warnings, executionContext);
 				}
 			} else {
-				CommandLineParser.printUsage();
+				CommandLineParser.printUsage(args);
 				return false;
 			}
 			return true;
-		} catch (Exception e) {
-			if (e instanceof CancellationException) {
-				_log.warn("cancelled");
-				throw e;
+		} catch (Throwable t) {
+			if (t instanceof CancellationException) {
+				getLogger().warn("cancelled");
+				throw t;
 			}
-			_log.error(e.getMessage(), e);
-			System.out.println("Error: " + e.getClass().getName() + ": " + e.getMessage());
+			getLogger().error(t.getMessage(), t);
+			System.err.println("Error: " + t.getClass().getName() + ": " + t.getMessage());
+			CommandLineParser.printAruments(System.err, args, pw);
 			String workingDirectory = System.getProperty("user.dir");
-			_log.error("working directory is " + workingDirectory);
-			throw e;
+			getLogger().error("working directory is " + workingDirectory);
+			throw t;
+		}
+	}
+
+	private static void printClosure(String extractionModelFileName, String separator, ExecutionContext executionContext) throws MalformedURLException, IOException {
+		ExtractionModel extractionModel = new ExtractionModel(new File(extractionModelFileName).toURI().toURL(), executionContext.getSourceSchemaMapping(), executionContext.getParameters(), executionContext, true);
+		Set<Table> subjects = new HashSet<Table>();
+		if (extractionModel.additionalSubjects != null) {
+			for (AdditionalSubject as: extractionModel.additionalSubjects) {
+				subjects.add(as.getSubject());
+			}
+		}
+		subjects.add(extractionModel.subject);
+
+		Set<String> closure = new TreeSet<String>();
+		Set<Table> toIgnore = new HashSet<Table>();
+		for (Table subject: subjects) {
+			for (Table table: subject.closure(toIgnore)) {
+				closure.add(Quoting.unquotedTableName(table, executionContext));
+				toIgnore.add(table);
+			}
+		}
+
+		int row = 0;
+		for (String tableName: closure) {
+			if (separator == null) {
+				System.out.println(tableName);
+			} else {
+				if (row++ > 0) {
+					System.out.print(separator);
+				}
+				System.out.print(tableName);
+			}
+		}
+		if (separator != null) {
+			System.out.println();
+		}
+	}
+
+	private static void updateDataModelFolder(CommandLine commandLine, String extractionModelFileName,
+			ExecutionContext executionContext) throws IOException {
+		if (extractionModelFileName != null && "datamodel".equals(commandLine.datamodelFolder)) {
+			String datamodelFolder = ExtractionModel.loadDatamodelFolder(extractionModelFileName, executionContext);
+			if (datamodelFolder != null) {
+				executionContext.setCurrentModelSubfolder(datamodelFolder);
+			}
 		}
 	}
 
 	/**
 	 * Render the data model.
-	 * 
+	 *
 	 * @param schema schema to analyze
 	 */
-	private static void renderDataModel(List<String> arguments, boolean withClosures, String schema, ExecutionContext executionContext) throws Exception {
+	private static void renderDataModel(List<String> arguments, String schema, ExecutionContext executionContext) throws Exception {
 		DataModel dataModel = new DataModel(executionContext);
 		for (String rm : arguments.subList(1, arguments.size())) {
 			if (dataModel.getRestrictionModel() == null) {
@@ -342,157 +406,6 @@ public class Jailer {
 			throw new RuntimeException("no renderer found");
 		}
 		renderer.render(dataModel, arguments.subList(1, arguments.size()));
-	}
-
-	/**
-	 * Prints shortest association between two tables.
-	 */
-	private static void findAssociation(String from, String to, List<String> restModels, boolean undirected, ExecutionContext executionContext) throws Exception {
-		DataModel dataModel = new DataModel(executionContext);
-		for (String rm : restModels) {
-			if (dataModel.getRestrictionModel() == null) {
-				dataModel.setRestrictionModel(new RestrictionModel(dataModel, executionContext));
-			}
-			URL modelURL = new File(rm).toURI().toURL();
-			dataModel.getRestrictionModel().addRestrictionDefinition(modelURL, new HashMap<String, String>());
-		}
-		Table source = dataModel.getTable(from);
-		if (source == null) {
-			throw new RuntimeException("unknown table: '" + from);
-		}
-		Table destination = dataModel.getTable(to);
-		if (destination == null) {
-			throw new RuntimeException("unknown table: '" + to);
-		}
-
-		System.out.println();
-		System.out.println("Shortest path from " + source.getName() + " to " + destination.getName() + ":");
-
-		Map<Table, Table> successor = new HashMap<Table, Table>();
-		Map<Table, Association> outgoingAssociation = new HashMap<Table, Association>();
-		List<Table> agenda = new ArrayList<Table>();
-		agenda.add(destination);
-
-		while (!agenda.isEmpty()) {
-			Table table = agenda.remove(0);
-			for (Association association : incomingAssociations(table, undirected)) {
-				if (!successor.containsKey(association.source)) {
-					successor.put(association.source, table);
-					outgoingAssociation.put(association.source, association);
-					agenda.add(association.source);
-					if (association.source.equals(source)) {
-						agenda.clear();
-						break;
-					}
-				}
-			}
-		}
-		if (successor.containsKey(source)) {
-			String joinedSelect = "Select * From " + source.getName();
-			System.out.println("    " + source.getName());
-			for (Table table = source; !table.equals(destination); table = successor.get(table)) {
-				Association association = outgoingAssociation.get(table);
-				System.out.println("    " + association);
-				joinedSelect += " join "
-						+ association.destination.getName()
-						+ " on "
-						+ (association.reversed ? SqlUtil.replaceAliases(association.getJoinCondition(), association.destination.getName(), association.source
-								.getName()) : SqlUtil.replaceAliases(association.getJoinCondition(), association.source.getName(), association.destination
-								.getName()));
-			}
-			System.out.println();
-			System.out.println();
-			System.out.println("SQL query:");
-			System.out.println("    " + joinedSelect);
-		} else {
-			System.out.println("tables are not associated");
-		}
-	}
-
-	/**
-	 * Prints restricted data-model.
-	 */
-	private static void printDataModel(List<String> restrictionModels, boolean printClosures, ExecutionContext executionContext) throws Exception {
-		DataModel dataModel = new DataModel(executionContext);
-		if (printClosures) {
-			DataModel.printClosures = true;
-		}
-		for (String rm : restrictionModels.subList(1, restrictionModels.size())) {
-			if (dataModel.getRestrictionModel() == null) {
-				dataModel.setRestrictionModel(new RestrictionModel(dataModel, executionContext));
-			}
-			URL modelURL = new File(rm).toURI().toURL();
-			dataModel.getRestrictionModel().addRestrictionDefinition(modelURL, new HashMap<String, String>());
-		}
-
-		BufferedReader in = new BufferedReader(new StringReader(dataModel.toString()));
-		String line;
-		while ((line = in.readLine()) != null) {
-			System.out.println(line);
-			CancellationHandler.checkForCancellation(null);
-		}
-
-		printCycles(dataModel);
-		printComponents(dataModel, executionContext);
-	}
-
-	/**
-	 * Searches cycles in a data-model and prints out all tables involved in a
-	 * cycle.
-	 * 
-	 * @param dataModel
-	 *            the data-model
-	 */
-	private static void printCycles(DataModel dataModel) {
-		Set<Table> independentTables;
-		Set<Table> tables = new HashSet<Table>(dataModel.getTables());
-		do {
-			independentTables = dataModel.getIndependentTables(tables);
-			tables.removeAll(independentTables);
-		} while (!independentTables.isEmpty());
-		if (tables.isEmpty()) {
-			System.out.println("no cyclic dependencies" + SubsettingEngine.asString(tables));
-		} else {
-			System.out.println("tables in dependent-cycle: " + SubsettingEngine.asString(tables));
-		}
-	}
-
-	/**
-	 * Searches components in a data-model and prints out all components.
-	 * 
-	 * @param dataModel
-	 *            the data-model
-	 */
-	private static void printComponents(DataModel dataModel, ExecutionContext executionContext) {
-		List<Set<Table>> components = new ArrayList<Set<Table>>();
-		Set<Table> tables = new HashSet<Table>(dataModel.getTables());
-		while (!tables.isEmpty()) {
-			Table table = tables.iterator().next();
-			Set<Table> closure = table.closure(new HashSet<Table>(), false);
-			components.add(closure);
-			tables.removeAll(closure);
-		}
-		System.out.println(components.size() + " components: ");
-		for (Set<Table> component : components) {
-			System.out.println(new PrintUtil().tableSetAsString(component));
-		}
-	}
-
-	/**
-	 * Collects all non-ignored associations with a given table as destination.
-	 * 
-	 * @param table
-	 *            the table
-	 * @return all non-ignored associations with table as destination
-	 */
-	private static Collection<Association> incomingAssociations(Table table, boolean undirected) {
-		Collection<Association> result = new ArrayList<Association>();
-		for (Association association : table.associations) {
-			if (association.reversalAssociation.getJoinCondition() != null || (undirected && association.getJoinCondition() != null)) {
-				result.add(association.reversalAssociation);
-			}
-		}
-		return result;
 	}
 
 }

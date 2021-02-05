@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -185,6 +185,8 @@ public class Configuration {
 	 */
 	private static Configuration theConfiguration = null;
 
+	public static File applicationBase;
+
 	/**
 	 * Gets the configuration.
 	 */
@@ -211,7 +213,12 @@ public class Configuration {
 			String name = "jailer.xml";
 			try {
 				InputStream res;
-				File configFile = new File(name);
+				File configFile;
+				if (applicationBase == null) {
+					configFile = new File(name);
+				} else {
+					configFile = new File(applicationBase, name);
+				}
 				if (!configFile.exists()) {
 					res = Configuration.class.getResourceAsStream(name);
 				} else {

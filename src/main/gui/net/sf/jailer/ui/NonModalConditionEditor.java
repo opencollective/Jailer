@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@ import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.ActionMap;
 import javax.swing.Icon;
-import javax.swing.ImageIcon;
 import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -79,20 +78,21 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
 	private ParameterSelector parameterSelector;
 	private DataModelBasedSQLCompletionProvider provider;
 
-	/** Creates new form ConditionEditor */
-	public NonModalConditionEditor(java.awt.Frame parent, ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel) {
+	/** Creates new form ConditionEditor 
+	 * @param withPseudoColumns */
+	public NonModalConditionEditor(java.awt.Frame parent, ParameterSelector.ParametersGetter parametersGetter, boolean withPseudoColumns, DataModel dataModel) {
 		super(parent, false);
-		init(parametersGetter, dataModel);
+		init(parametersGetter, dataModel, withPseudoColumns);
 	}
 
 	/** Creates new form ConditionEditor */
 	public NonModalConditionEditor(Dialog parent, ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel) {
 		super(parent, false);
-		init(parametersGetter, dataModel);
+		init(parametersGetter, dataModel, false);
 	}
 
 	@SuppressWarnings("serial")
-	private void init(ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel) {
+	private void init(ParameterSelector.ParametersGetter parametersGetter, DataModel dataModel, final boolean withPseudoColumns) {
 		setUndecorated(true);
 		initComponents();
 
@@ -141,7 +141,7 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
 				if (ok && initialCondition.equals(editorPane.getText())) {
 					ok = false;
 				}
-				consume(ok? removeSingleLineComments(editorPane.getText()).replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ') : null);
+				consume(ok? removeSingleLineComments(editorPane.getText()).replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ').replaceFirst("(?is)^\\s*where\\b\\s*", "") : null);
 			}
 		});
 
@@ -173,7 +173,17 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
 		
 		if (dataModel != null) {
 			try {
-				provider = new DataModelBasedSQLCompletionProvider(null, dataModel);
+				provider = new DataModelBasedSQLCompletionProvider(null, dataModel) {
+					@Override
+					protected List<String> getColumns(Table table, long timeOut, JComponent waitCursorSubject) {
+						List<String> columns = super.getColumns(table, timeOut, waitCursorSubject);
+						if (withPseudoColumns) {
+							columns.add("$DISTANCE");
+							columns.add("$IS_SUBJECT");
+						}
+						return columns;
+					}
+				};
 				provider.setDefaultClause(SQLCompletionProvider.Clause.WHERE);
 				sqlAutoCompletion = new SQLAutoCompletion(provider, editorPane);
 			} catch (SQLException e) {
@@ -451,6 +461,8 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
 			scalarSQIconToggleButton.setVisible(true);
 			scalarSQIconToggleButton.setIcon(dropDownIcon);
 		}
+		
+		scalarSQIconToggleButton.setEnabled(table1 != null && !table1.associations.isEmpty());
 
 		this.table1 = table1;
 		this.table2 = table2;
@@ -579,14 +591,8 @@ public abstract class NonModalConditionEditor extends EscapableDialog {
 	
 	private Icon dropDownIcon;
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			dropDownIcon = new ImageIcon(getClass().getResource(dir + "/dropdown.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		dropDownIcon = UIUtil.readImage("/dropdown.png");
 	}
 
 	public RSyntaxTextAreaWithSQLSyntaxStyle editorPane;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.sql.Types;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -118,6 +119,11 @@ public class UpdateTransformer extends AbstractResultSetReader {
 	private final ExecutionContext executionContext;
 
 	/**
+	 * If <code>true</code>, use source-schema-mapping, else use schema-mapping.
+	 */
+	private final boolean inSourceSchema;
+
+	/**
 	 * To be written as comment.
 	 */
 	private String reason;
@@ -132,9 +138,10 @@ public class UpdateTransformer extends AbstractResultSetReader {
 	 * @param maxBodySize maximum length of SQL values list (for generated inserts)
 	 * @param session the session
 	 * @param targetDBMSConfiguration configuration of the target DBMS
+	 * @param inSourceSchema if <code>true</code>, use source-schema-mapping, else use schema-mapping
 	 * @param reason to be written as comment
 	 */
-	public UpdateTransformer(Table table, Set<Column> columns, OutputStreamWriter scriptFileWriter, int maxBodySize, Session session, DBMS targetDBMSConfiguration, ImportFilterTransformer importFilterTransformer, String reason, ExecutionContext executionContext) throws SQLException {
+	public UpdateTransformer(Table table, Set<Column> columns, OutputStreamWriter scriptFileWriter, int maxBodySize, Session session, DBMS targetDBMSConfiguration, ImportFilterTransformer importFilterTransformer, boolean inSourceSchema, String reason, ExecutionContext executionContext) throws SQLException {
 		this.executionContext = executionContext;
 		this.targetDBMSConfiguration = targetDBMSConfiguration;
 		this.maxBodySize = maxBodySize;
@@ -142,10 +149,11 @@ public class UpdateTransformer extends AbstractResultSetReader {
 		this.columns = columns;
 		this.scriptFileWriter = scriptFileWriter;
 		this.currentDialect = targetDBMSConfiguration.getSqlDialect();
-		this.quoting = new Quoting(session);
+		this.quoting = Quoting.getQuoting(session);
 		this.importFilterTransformer = importFilterTransformer;
+		this.inSourceSchema = inSourceSchema;
 		this.reason = reason;
-		if (targetDBMSConfiguration != null && targetDBMSConfiguration != session.dbms) {
+		if (targetDBMSConfiguration != session.dbms) {
 			if (targetDBMSConfiguration.getIdentifierQuoteString() != null) {
 				this.quoting.setIdentifierQuoteString(targetDBMSConfiguration.getIdentifierQuoteString());
 			}
@@ -154,7 +162,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 		selectionClause = table.getSelectionClause();
 		this.primaryKeyColumnNames = new HashSet<String>();
 		for (Column c: table.getNonVirtualPKColumns(session)) {
-			this.primaryKeyColumnNames.add(c.name.toUpperCase());
+			this.primaryKeyColumnNames.add(c.name.toUpperCase(Locale.ENGLISH));
 		}
 	}
 
@@ -199,7 +207,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 			columnLabel = new String[columnCount + 1];
 			labelCSL = "";
 			for (int i = 1; i <= columnCount; ++i) {
-				String mdColumnLabel = quoting.quote(getMetaData(resultSet).getColumnLabel(i));
+				String mdColumnLabel = SqlUtil.columnLabel(quoting, session, targetDBMSConfiguration, table, getMetaData(resultSet).getColumnLabel(i));
 				
 				columnLabel[i] = mdColumnLabel;
 				if (labelCSL.length() > 0) {
@@ -208,7 +216,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 				labelCSL += columnLabel[i];
 			}
 			for (Column column: columns) {
-				columnNamesLower.add(column.name.toLowerCase());
+				columnNamesLower.add(column.name.toLowerCase(Locale.ENGLISH));
 			}
 		}
 		try {
@@ -221,7 +229,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 				if (columnLabel[i] == null) {
 					continue;
 				}
-				if (!isPrimaryKeyColumn(columnLabel[i]) && !columnNamesLower.contains(columnLabel[i].toLowerCase())) {
+				if (!isPrimaryKeyColumn(columnLabel[i]) && !columnNamesLower.contains(columnLabel[i].toLowerCase(Locale.ENGLISH))) {
 					continue;
 				}
 				if (content == null) {
@@ -245,6 +253,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 			}
 
 			Map<String, String> val = new HashMap<String, String>();
+			Map<String, Boolean> valIsNull = new HashMap<String, Boolean>();
 			StringBuffer valuesWONull = new StringBuffer("");
 			StringBuffer columnsWONull = new StringBuffer("");
 			f = true;
@@ -264,6 +273,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 						cVal = "time " + cVal;
 					}
 				}
+				valIsNull.put(columnLabel[i], content == null);
 				val.put(columnLabel[i], cVal);
 				if (content != null) {
 					if (!f) {
@@ -278,6 +288,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 			
 			f = true;
 			StringBuffer whereForTerminator = new StringBuffer("");
+			StringBuffer whereForTerminatorWONull = new StringBuffer("");
 			StringBuffer where = new StringBuffer("");
 			StringBuffer whereWOAlias = new StringBuffer("");
 			
@@ -285,22 +296,34 @@ public class UpdateTransformer extends AbstractResultSetReader {
 			for (Column pk: table.getNonVirtualPKColumns(session)) {
 				if (!f) {
 					whereForTerminator.append(" and ");
+					whereForTerminatorWONull.append(" and ");
 					where.append(" and ");
 					whereWOAlias.append(" and ");
 				}
 				f = false;
-				whereForTerminator.append("T." + quoting.requote(pk.name) + "=Q." + quoting.requote(pk.name));
 				String value;
+				Boolean isNull;
 				String name = quoting.quote(pk.name);
 				if (val.containsKey(name)) {
 					value = val.get(name);
-				} else if (val.containsKey(name.toLowerCase())) {
-					value = val.get(name.toLowerCase());
+					isNull = valIsNull.get(name);
+				} else if (val.containsKey(name.toLowerCase(Locale.ENGLISH))) {
+					value = val.get(name.toLowerCase(Locale.ENGLISH));
+					isNull = valIsNull.get(name.toLowerCase(Locale.ENGLISH));
 				} else {
-					value = val.get(name.toUpperCase());
+					value = val.get(name.toUpperCase(Locale.ENGLISH));
+					isNull = valIsNull.get(name.toUpperCase(Locale.ENGLISH));
 				}
-				where.append("T." + quoting.requote(pk.name) + "=" + value);
-				whereWOAlias.append(quoting.requote(pk.name) + "=" + value);
+				String op = Boolean.TRUE.equals(isNull)? " is null" : ("=" + value);
+				where.append("T." + quoting.requote(pk.name) + op);
+				whereWOAlias.append(quoting.requote(pk.name) + op);
+				if (pk.isNullable) {
+					whereForTerminator.append("(T." + quoting.requote(pk.name) + "=Q." + quoting.requote(pk.name));
+					whereForTerminator.append(" or (T." + quoting.requote(pk.name) + " is null and Q." + quoting.requote(pk.name) + " is null))");
+				} else {
+					whereForTerminator.append("T." + quoting.requote(pk.name) + "=Q." + quoting.requote(pk.name));
+				}
+				whereForTerminatorWONull.append("T." + quoting.requote(pk.name) + (Boolean.TRUE.equals(isNull)? " is null" : ("=Q." + quoting.requote(pk.name))));
 			}
 
 			if (currentDialect.getUpsertMode() == UPSERT_MODE.MERGE) {
@@ -317,8 +340,8 @@ public class UpdateTransformer extends AbstractResultSetReader {
 					if (columnLabel[i] == null) {
 						continue;
 					}
-					if  (!isPrimaryKeyColumn(columnLabel[i])) {
-						if (columnNamesLower.contains(columnLabel[i].toLowerCase())) {
+					if (!isPrimaryKeyColumn(columnLabel[i])) {
+						if (columnNamesLower.contains(columnLabel[i].toLowerCase(Locale.ENGLISH))) {
 							if (sets.length() > 0) {
 								sets.append(", ");
 							}
@@ -345,7 +368,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 				}
 			
 				String item = "Select " + valueList + " from dual";
-				if (!sb.isAppendable(insertHead, item)) {
+				if (!sb.isAppendable(insertHead)) {
 					writeToScriptFile(sb.build(), true);
 				}
 				if (sb.isEmpty()) {
@@ -359,7 +382,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 				insert.append("Update " + qualifiedTableName(table) + " set ");
 				f = true;
 				for (int i = 1; i <= columnCount; ++i) {
-					if (!columnNamesLower.contains(columnLabel[i].toLowerCase())) {
+					if (!columnNamesLower.contains(columnLabel[i].toLowerCase(Locale.ENGLISH))) {
 						continue;
 					}
 					if (isPrimaryKeyColumn(columnLabel[i])) {
@@ -389,7 +412,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 	 */
 	private String qualifiedTableName(Table t) {
 		String schema = t.getOriginalSchema("");
-		String mappedSchema = executionContext.getSchemaMapping().get(schema);
+		String mappedSchema = inSourceSchema? executionContext.getDeletionSchemaMapping().get(schema) : executionContext.getSchemaMapping().get(schema);
 		if (mappedSchema != null) {
 			schema = mappedSchema;
 		}
@@ -406,7 +429,7 @@ public class UpdateTransformer extends AbstractResultSetReader {
 	 * @return <code>true</code> if column is part of primary key
 	 */
 	private boolean isPrimaryKeyColumn(String column) {
-		return primaryKeyColumnNames.contains(column.toUpperCase());
+		return primaryKeyColumnNames.contains(column.toUpperCase(Locale.ENGLISH));
 	}
 
 	/**

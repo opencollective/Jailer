@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ public abstract class PathFinderView extends javax.swing.JPanel {
 			this.pathStations = new ArrayList<Table>(pathStations);
 			this.excludedTables = new HashSet<Table>(excludedTables);
 		}
-	};
+	}
 	
 	private State lastState = null;
 	private Stack<State> undoStack = new Stack<State>();
@@ -132,7 +132,7 @@ public abstract class PathFinderView extends javax.swing.JPanel {
     	this.dataModel = dataModel;
     	this.source = source;
     	this.destination = destination;
-    	this.sourceClosure = source.closure(true);
+    	this.sourceClosure = source.closure();
         initComponents();
 
         redDotIconScaled = UIUtil.scaleIcon(this, redDotIcon);
@@ -1337,16 +1337,10 @@ public abstract class PathFinderView extends javax.swing.JPanel {
 	private static final Color COLOR_NOT_IN_CLOSURE = new Color(255, 80, 80);
 
 	static {
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            cancelIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/Cancel2.png"));
-            rightIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/right.png"));
-            leftIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/left.png"));
-        } catch (Exception e) {
-            // ignore
-        }
+        cancelIcon = UIUtil.readImage("/Cancel2.png");
+        rightIcon = UIUtil.readImage("/right.png");
+        leftIcon = UIUtil.readImage("/left.png");
     }
 
 	private ImageIcon redDotIconScaled;
@@ -1359,17 +1353,11 @@ public abstract class PathFinderView extends javax.swing.JPanel {
 	private static ImageIcon greenDotIcon;
 	private static ImageIcon greyDotIcon;
 	static {
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			redDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/reddot.gif"));
-			blueDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/bluedot.gif"));
-			greenDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/greendot.gif"));
-			greyDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/greydot.gif"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		redDotIcon = UIUtil.readImage("/reddot.gif");
+		blueDotIcon = UIUtil.readImage("/bluedot.gif");
+		greenDotIcon = UIUtil.readImage("/greendot.gif");
+		greyDotIcon = UIUtil.readImage("/greydot.gif");
 	}
 
     private static final long serialVersionUID = 1L;

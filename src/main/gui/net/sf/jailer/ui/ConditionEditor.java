@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,6 @@ import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
-import net.sf.jailer.ui.pathfinder.PathFinderView;
 import net.sf.jailer.ui.scrollmenu.JScrollMenu;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
 import net.sf.jailer.ui.syntaxtextarea.BasicFormatterImpl;
@@ -366,6 +365,8 @@ public class ConditionEditor extends EscapableDialog {
 			scalarSQIconToggleButton.setVisible(true);
 		}
 		
+		scalarSQIconToggleButton.setEnabled(table1 != null && !table1.associations.isEmpty());
+
 		this.table1 = table1;
 		this.table2 = table2;
 		this.table1alias = table1alias;
@@ -406,7 +407,7 @@ public class ConditionEditor extends EscapableDialog {
 		if (ok && condition.equals(editorPane.getText())) {
 			ok = false;
 		}
-		return ok? removeSingleLineComments(editorPane.getText()).replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ') : null;
+		return ok? removeSingleLineComments(editorPane.getText()).replaceFirst("(?is)^\\s*where\\b\\s*", "").replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ') : null;
 	}
 
 	/**
@@ -510,9 +511,9 @@ public class ConditionEditor extends EscapableDialog {
 					public void actionPerformed(ActionEvent ev) {
 						String condition;
 						if (!e.getValue().reversed) {
-							condition = SqlUtil.replaceAliases(e.getValue().getJoinCondition(), alias, e.getValue().destination.getUnqualifiedName());
+							condition = SqlUtil.replaceAliases(e.getValue().getUnrestrictedJoinCondition(), alias, e.getValue().destination.getUnqualifiedName());
 						} else {
-							condition = SqlUtil.replaceAliases(e.getValue().getJoinCondition(), e.getValue().destination.getUnqualifiedName(), alias);
+							condition = SqlUtil.replaceAliases(e.getValue().getUnrestrictedJoinCondition(), e.getValue().destination.getUnqualifiedName(), alias);
 						}
 						editor.replaceSelection(
 								"(Select " + col.name + " from " + e.getValue().destination.getName() + 
@@ -536,22 +537,16 @@ public class ConditionEditor extends EscapableDialog {
     private javax.swing.JButton toSubQueryButton;
     // End of variables declaration//GEN-END:variables
 	
-	private Icon dropDownIcon;
+	private static Icon dropDownIcon;
 	private static ImageIcon redDotIcon;
 	private static ImageIcon blueDotIcon;
 	private static ImageIcon greenDotIcon;
-	{
-		String dir = "/net/sf/jailer/ui/resource";
-		
+	static {
 		// load images
-		try {
-			dropDownIcon = new ImageIcon(getClass().getResource(dir + "/dropdown.png"));
-			redDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/reddot.gif"));
-			blueDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/bluedot.gif"));
-			greenDotIcon = new ImageIcon(PathFinderView.class.getResource(dir + "/greendot.gif"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		dropDownIcon = UIUtil.readImage("/dropdown.png");
+		redDotIcon = UIUtil.readImage("/reddot.gif");
+		blueDotIcon = UIUtil.readImage("/bluedot.gif");
+		greenDotIcon = UIUtil.readImage("/greendot.gif");
 	}
 	
 	public final RSyntaxTextAreaWithSQLSyntaxStyle editorPane;

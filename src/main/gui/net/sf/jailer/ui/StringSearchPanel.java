@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,6 +60,7 @@ import javax.swing.JDialog;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JSeparator;
+import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -75,7 +76,6 @@ import org.fife.rsta.ui.EscapableDialog;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.ui.databrowser.metadata.MDSchema;
-import net.sf.jailer.ui.databrowser.metadata.MetaDataPanel;
 import net.sf.jailer.ui.databrowser.metadata.MetaDataSource;
 
 /**
@@ -111,8 +111,12 @@ public class StringSearchPanel extends javax.swing.JPanel {
 	public static JToggleButton createSearchButton(final Window owner, final javax.swing.JComboBox comboBox, final Object titel, final Runnable onSuccess, final Prepare prepare, final MetaDataSource metaDataSource, final DataModel dataModel) {
 		return createSearchButton(owner, comboBox, titel, onSuccess, prepare, metaDataSource, dataModel, false, null, true);
 	}
-
+	
 	public static JToggleButton createSearchButton(final Window owner, final javax.swing.JComboBox comboBox, final Object titel, final Runnable onSuccess, final Prepare prepare, final MetaDataSource metaDataSource, final DataModel dataModel, boolean alternativeIcon, final AdditionalComponentFactory additionalComponentFactory, final boolean locateUnderButton) {
+		return createSearchButton(owner, comboBox, titel, onSuccess, prepare, metaDataSource, dataModel, alternativeIcon, additionalComponentFactory, locateUnderButton, false);
+	}
+
+	public static JToggleButton createSearchButton(final Window owner, final javax.swing.JComboBox comboBox, final Object titel, final Runnable onSuccess, final Prepare prepare, final MetaDataSource metaDataSource, final DataModel dataModel, boolean alternativeIcon, final AdditionalComponentFactory additionalComponentFactory, final boolean locateUnderButton, final boolean keepSearchText) {
 		final JToggleButton button = new JToggleButton();
 		button.setIcon(getSearchIcon(alternativeIcon, button));
 		button.addActionListener(new ActionListener() {
@@ -132,6 +136,7 @@ public class StringSearchPanel extends javax.swing.JPanel {
 					        		location = buttonLocation;
 					        	}
 								StringSearchPanel searchPanel = new StringSearchPanel(button, comboBox, metaDataSource, dataModel, prepare, onSuccess);
+								searchPanel.keepSearchText = keepSearchText;
 								if (additionalComponentFactory != null) {
 									searchPanel.plugInPanel.add(additionalComponentFactory.create(searchPanel), java.awt.BorderLayout.CENTER);
 									searchPanel.plugInPanel.setVisible(true);
@@ -175,8 +180,21 @@ public class StringSearchPanel extends javax.swing.JPanel {
 		return button;
 	}
 
+	private static ImageIcon sIcon = null;
+	private static ImageIcon sIcon2 = null;
+	
 	public static ImageIcon getSearchIcon(boolean alternativeIcon, final JComponent button) {
-		return UIUtil.scaleIcon(button, alternativeIcon? icon2 : icon);
+		if (alternativeIcon) {
+			if (sIcon2 == null) {
+				sIcon2 = UIUtil.scaleIcon(button, icon2);
+			}
+			return sIcon2;
+		} else {
+			if (sIcon == null) {
+				sIcon = UIUtil.scaleIcon(button, icon);
+			}
+			return sIcon;
+		}
 	}
 
 	private static void updateEnabledState(JToggleButton button, JComboBox comboBox) {
@@ -269,6 +287,15 @@ public class StringSearchPanel extends javax.swing.JPanel {
 		if (button != null) {
 			button.setSelected(true);
 		}
+		if (combobox != null && keepSearchText) {
+			try {
+				JTextField c;
+				c = (JTextField) combobox.getEditor().getEditorComponent();
+				searchTextField.setText(c.getText());
+			} catch (ClassCastException e) {
+				// ignore
+			}
+		}
 		dialog.setVisible(true);
 	}
 
@@ -287,7 +314,8 @@ public class StringSearchPanel extends javax.swing.JPanel {
 	private final int MAX_LIST_LENGTH = 80;
 	private boolean showAll = false;
 	private String showAllLabel;
-	 
+	private boolean keepSearchText = false;
+	
 	private void updateList() {
 		DefaultListModel<String> matches = new DefaultListModel<String>();
 		String text = searchTextField.getText();
@@ -591,7 +619,7 @@ public class StringSearchPanel extends javax.swing.JPanel {
 						public void run() {
 							cancelLoading.set(false);
 							for (MDSchema schema: toLoad) {
-								schema.loadTables(false, null, null);
+								schema.loadTables(false, null, null, null);
 								setCheckboxState(checkboxPerSchema.get(schema), schema, true, false);
 								while (!schema.isLoaded() && !cancelLoading.get()) {
 									try {
@@ -868,14 +896,8 @@ public class StringSearchPanel extends javax.swing.JPanel {
     static private ImageIcon icon;
     static private ImageIcon icon2;
     static {
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			icon = new ImageIcon(MetaDataPanel.class.getResource(dir + "/search.png"));
-			icon2 = new ImageIcon(MetaDataPanel.class.getResource(dir + "/search2.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		icon = UIUtil.readImage("/search.png");
+		icon2 = UIUtil.readImage("/search2.png");
 	}
 }

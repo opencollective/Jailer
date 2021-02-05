@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import javax.swing.event.InternalFrameEvent;
 import javax.swing.event.InternalFrameListener;
 import javax.swing.plaf.basic.BasicInternalFrameUI;
 
+import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.ui.databrowser.Desktop.RowBrowser;
 
 /**
@@ -88,6 +89,14 @@ public abstract class DesktopAnchorManager {
 			public void mouseClicked(MouseEvent e) {
 			}
 		});
+	}
+	
+	public void onTableBrowserNeared(RowBrowser tableBrowser) {
+		if (isApplicable(tableBrowser)) {
+			showButton(tableBrowser);
+		} else {
+			reset();
+		}
 	}
 
 	public void onNewTableBrowser(final RowBrowser tableBrowser) {
@@ -252,20 +261,18 @@ public abstract class DesktopAnchorManager {
 			reset();
 		}
 	}
-	
+
+	public int getButtonWidth() {
+		return anchorButton.getWidth();
+	}
+
 	protected abstract void layout(RowBrowser anchor);
 	protected abstract boolean isApplicable(RowBrowser tableBrowser);
 
 	private ImageIcon anchorIcon;
 	{
-        String dir = "/net/sf/jailer/ui/resource";
-        
         // load images
-        try {
-            anchorIcon = new ImageIcon(DataBrowser.class.getResource(dir + "/anchor.png"));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+		anchorIcon = UIUtil.readImage("/anchor.png");
     }
 
 }

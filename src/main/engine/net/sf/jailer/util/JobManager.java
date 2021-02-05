@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import org.apache.log4j.Logger;
  *  
  * @author Ralf Wisser
  */
-public class JobManager {
+public abstract class JobManager {
 
 	/**
 	 * A job to be managed by a {@link JobManager}.
@@ -39,7 +39,7 @@ public class JobManager {
 		 * Runs the job.
 		 */
 		void run() throws SQLException, CancellationException;
-	};
+	}
 
 	/**
 	 * The logger.
@@ -98,7 +98,7 @@ public class JobManager {
 						incrementJobsInExecutionCounter();
 						job.run();
 						incrementJobsDoneCounter();
-					} catch (Exception e) {
+					} catch (Throwable e) {
 						setException(e);
 					} finally {
 						decrementJobsInExecutionCounter();
@@ -197,6 +197,11 @@ public class JobManager {
 	private int jobsDoneCounter;
 	
 	/**
+	 * Number of jobs waiting for primary cause.
+	 */
+	private int jobsWaitingForPrimaryCauseCounter;
+	
+	/**
 	 * Number of jobs currently executed.
 	 */
 	private int jobsInExecutionCounter;
@@ -217,6 +222,7 @@ public class JobManager {
 	 */
 	private synchronized void setJobs(List<Job> jobs) {
 		jobsDoneCounter = 0;
+		jobsWaitingForPrimaryCauseCounter = 0;
 		jobsInExecutionCounter = 0;
 		this.jobs = jobs;
 		exception = null;
@@ -230,10 +236,31 @@ public class JobManager {
 	}
 
 	/**
+	 * Gets the Number of jobs waiting for primary cause.
+	 */
+	private synchronized int getJobsWaitingForPrimaryCauseCounter() {
+		return jobsWaitingForPrimaryCauseCounter;
+	}
+
+	/**
 	 * Increments the Number of executed jobs.
 	 */
 	private synchronized void incrementJobsDoneCounter() {
 		++jobsDoneCounter;
+	}
+
+	/**
+	 * Increments the Number of jobs Waiting for primary cause.
+	 */
+	private synchronized void incrementJobsWaitingForPrimaryCauseCounter() {
+		++jobsWaitingForPrimaryCauseCounter;
+	}
+
+	/**
+	 * Decrements the Number of jobs Waiting for primary cause.
+	 */
+	private synchronized void decrementJobsWaitingForPrimaryCauseCounter() {
+		--jobsWaitingForPrimaryCauseCounter;
 	}
 
 	/**
@@ -277,10 +304,55 @@ public class JobManager {
 	/**
 	 * Sets an exception.
 	 */
-	private synchronized void setException(Exception e) {
-		exception = e == null? null : (e instanceof CancellationException || e instanceof SQLException)? e 
-				: new RuntimeException(Thread.currentThread().getName() + " failed", e);
-		jobs = null;
+	private void setException(Throwable e) {
+		if (isPotentiallyConsequentialError(e)) {
+			synchronized (this) {
+				jobs = null;
+			}
+			// wait for primary error
+			// wait for other jobs
+			incrementJobsWaitingForPrimaryCauseCounter();
+			int i = 0;
+			while (getJobsInExecutionCounter() - getJobsWaitingForPrimaryCauseCounter() > 0) {
+				try {
+					Thread.sleep(50);
+				} catch (InterruptedException e1) {
+					throw new RuntimeException(e1);
+				}
+				++i;
+				if (getException() != null) {
+					break;
+				}
+				if (i > (1000 * 20) / 50 /* 20 sec */) {
+					LogUtil.warn(new RuntimeException("No prim. cause. " + getJobsInExecutionCounter() + " " + getJobsWaitingForPrimaryCauseCounter()));
+					break;
+				}
+			}
+			decrementJobsWaitingForPrimaryCauseCounter();
+		}
+		synchronized (this) {
+			if (exception == null) {
+				exception = e == null? null : (e instanceof CancellationException || e instanceof SQLException)? (Exception) e 
+					: new RuntimeException(Thread.currentThread().getName() + " failed", e);
+				if (e != null && !(e instanceof CancellationException)) {
+					onException(e);
+				}
+			}
+			jobs = null;
+		}
 	}
-	
+
+	private synchronized boolean isPotentiallyConsequentialError(Throwable e) {
+		if (exception == null) {
+			if (e instanceof SQLException) {
+				if ("25P02".equals(((SQLException)e).getSQLState())) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	protected abstract void onException(Throwable t);
+
 }

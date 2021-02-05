@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlTransient;
@@ -32,7 +34,7 @@ import net.sf.jailer.database.SqlScriptBasedStatisticRenovator;
 
 /**
  * Describes a specific DBMS.
- * 
+ *
  * @author Ralf Wisser
  */
 public class DBMS {
@@ -55,7 +57,7 @@ public class DBMS {
 
 	/**
 	 * Gets all DBMSes.
-	 * 
+	 *
 	 * @return array of all DBMSes
 	 */
 	public static DBMS[] values() {
@@ -67,7 +69,7 @@ public class DBMS {
 	 */
 	public DBMS() {
 	}
-	
+
 	/**
 	 * Copy constructor.
 	 */
@@ -79,6 +81,7 @@ public class DBMS {
 		this.testQuery = other.testQuery;
 		this.statisticRenovator = other.statisticRenovator;
 		this.typeReplacement = other.typeReplacement;
+		this.experimentalTypeReplacement = other.experimentalTypeReplacement;
 		this.stringLiteralEscapeSequences = other.stringLiteralEscapeSequences;
 		this.sqlLimitSuffix = other.sqlLimitSuffix;
 		this.varcharLengthLimit = other.varcharLengthLimit;
@@ -98,9 +101,9 @@ public class DBMS {
 		this.binaryPattern = other.binaryPattern;
 		this.avoidLeftJoin = other.avoidLeftJoin;
 		this.timestampPattern = other.timestampPattern;
-		this.timestampFormat = other.timestampFormat;
+		this.timestampWithNanoTypeName = other.timestampWithNanoTypeName;
+		this.timestampWithNanoPattern = other.timestampWithNanoPattern;
 		this.datePattern = other.datePattern;
-		this.dateFormat = other.dateFormat;
 		this.sqlDialect = other.sqlDialect;
 		this.rowidName = other.rowidName;
 		this.supportsSchemasInIndexDefinitions = other.supportsSchemasInIndexDefinitions;
@@ -133,7 +136,7 @@ public class DBMS {
 
 	/**
 	 * Gets DBMS specific configuration.
-	 * 
+	 *
 	 * @param dbmsId the DBMS id
 	 * @return the DBMS with given id, or the default DBMS if id is <code>null</code>
 	 */
@@ -144,7 +147,7 @@ public class DBMS {
 		if (perDBMS.containsKey(dbmsId)) {
 			return perDBMS.get(dbmsId);
 		}
-		List<DBMS> cs = Configuration.getInstance().getDBMS();  
+		List<DBMS> cs = Configuration.getInstance().getDBMS();
 		for (DBMS c: cs) {
 			if (dbmsId.equals(c.getId())) {
 				perDBMS.put(dbmsId, c);
@@ -153,7 +156,7 @@ public class DBMS {
 		}
 		throw new RuntimeException("Unknown DBMS: \"" + dbmsId + "\"");
 	}
-	
+
 	/**
 	 * Holds configurations.
 	 */
@@ -180,45 +183,52 @@ public class DBMS {
 		FIREBIRD = forDBMS("FIREBIRD");
 		DERBY = forDBMS("DERBY");
 	}
-	
+
 	private String id;
 	private String familyId;
 	private String displayName;
-	
+
 	/**
 	 * DB-URL pattern of DBMS for which this holds the configuration.
 	 */
 	private String urlPattern;
-	
+
 	/**
 	 * Test-query for the DBMS for which this holds the configuration.
 	 */
 	private String testQuery;
-	
+
 	/**
 	 * The {@link SqlScriptBasedStatisticRenovator}.
 	 */
 	private SqlScriptBasedStatisticRenovator statisticRenovator;
-	
+
 	/**
 	 * Replacement map for column types used for DDL generation.
 	 */
 	private Map<String, String> typeReplacement = new HashMap<String, String>();
-	
+
+	private Map<String, String> sqlExpressionRule = new HashMap<String, String>();
+
+	/**
+	 * Replacement map for column types used for DDL generation. Only used if DBMS accept it.
+	 */
+	private Map<String, String> experimentalTypeReplacement = new HashMap<String, String>();
+
 	/**
 	 * Replacement map for special characters in string literals.
 	 */
 	private Map<String, String> stringLiteralEscapeSequences;
-	
+
 	/**
 	 * Suffix of SQL-Select statement to limit number of rows.
 	 */
 	private String sqlLimitSuffix;
-	
+
 	private Integer varcharLengthLimit = null;
 
 	private String tableProperties = "";
-	
+
 	/**
 	 * DB-Query to get DDL of a table
 	 */
@@ -261,7 +271,7 @@ public class DBMS {
 	public void setDdlCall(String ddlCall) {
 		this.ddlCall = ddlCall;
 	}
-	
+
 	/**
 	 * Maps characters to escape sequences according to {@link #stringLiteralEscapeSequences}.
 	 */
@@ -269,17 +279,17 @@ public class DBMS {
 	{ charToEscapeSequence.put('\'', "''"); }
 	private char[] keysOfCharToEscapeSequence = new char[] { '\'' };
 	private String ncharPrefix = null;
-	
+
 	/**
 	 * Set of type names for which no data must be exported.
 	 */
 	private Set<String> exportBlocks = new HashSet<String>();
-	
+
 	/**
 	 * <code>true</code> if DBMS supports identity-type (MS-SQL)
 	 */
 	private boolean identityInserts = false;
-	
+
 	private String emptyCLOBValue = null;
 	private String emptyNCLOBValue = null;
 	private String emptyBLOBValue = null;
@@ -290,10 +300,13 @@ public class DBMS {
 	private String binaryPattern = "x'%s'";
 	private boolean avoidLeftJoin = false;
 	private String timestampPattern = null;
+	private String timestampWithNanoTypeName = null;
+	private String timestampWithNanoPattern = null;
 	private String datePattern = null;
 	@XmlTransient
-	private SimpleDateFormat timestampFormat = null;
-	private SimpleDateFormat dateFormat = null;
+	private ThreadLocal<SimpleDateFormat> timestampFormat = new ThreadLocal<SimpleDateFormat>();
+	private ThreadLocal<SimpleDateFormat> timestampWithNanoFormat = new ThreadLocal<SimpleDateFormat>();
+	private ThreadLocal<SimpleDateFormat> dateFormat = new ThreadLocal<SimpleDateFormat>();
 	private SQLDialect sqlDialect = new SQLDialect();
 	private String rowidName = null;
 	private Boolean supportsSchemasInIndexDefinitions = null;
@@ -312,19 +325,80 @@ public class DBMS {
 	private String explainPrepare = null;
 	private String explainQuery = null;
 	private String explainCleanup = null;
-	
+
 	private String functionSourceQuery;
 	private String procedureSourceQuery;
 	private String packageSourceQuery;
 	private String packageNamesQuery;
 	private String defaultSchemaQuery;
-	
+
 	private Integer fetchSize = null;
 
 	private List<DatabaseObjectRenderingDescription> objectRenderers = new ArrayList<DatabaseObjectRenderingDescription>();
 	private boolean procedureDetailNeedsSpecificName = false;
 
 	private LimitTransactionSizeInfo limitTransactionSize = new LimitTransactionSizeInfo();
+
+	private String clobTypesRE;
+	private String nClobTypesRE;
+	private String blobTypesRE;
+	private Pattern clobTypesPattern;
+	private Pattern nClobTypesPattern;
+	private Pattern blobTypesPattern;
+
+	public boolean isClobType(String typeWithLength) {
+		if (clobTypesRE == null) {
+			return false;
+		}
+		if (clobTypesPattern == null) {
+			clobTypesPattern = Pattern.compile(clobTypesRE, Pattern.CASE_INSENSITIVE);
+		}
+		return clobTypesPattern.matcher(typeWithLength).matches();
+	}
+
+	public boolean isNClobType(String typeWithLength) {
+		if (nClobTypesRE == null) {
+			return false;
+		}
+		if (nClobTypesPattern == null) {
+			nClobTypesPattern = Pattern.compile(nClobTypesRE, Pattern.CASE_INSENSITIVE);
+		}
+		return nClobTypesPattern.matcher(typeWithLength).matches();
+	}
+
+	public boolean isBlobType(String typeWithLength) {
+		if (blobTypesRE == null) {
+			return false;
+		}
+		if (blobTypesPattern == null) {
+			blobTypesPattern = Pattern.compile(blobTypesRE, Pattern.CASE_INSENSITIVE);
+		}
+		return blobTypesPattern.matcher(typeWithLength).matches();
+	}
+
+	public String getClobTypesRE() {
+		return clobTypesRE;
+	}
+
+	public void setClobTypesRE(String clobTypesRE) {
+		this.clobTypesRE = clobTypesRE;
+	}
+
+	public String getnClobTypesRE() {
+		return nClobTypesRE;
+	}
+
+	public void setnClobTypesRE(String nClobTypesRE) {
+		this.nClobTypesRE = nClobTypesRE;
+	}
+
+	public String getBlobTypesRE() {
+		return blobTypesRE;
+	}
+
+	public void setBlobTypesRE(String blobTypesRE) {
+		this.blobTypesRE = blobTypesRE;
+	}
 
 	/**
 	 * @return the virtualColumnsQuery
@@ -412,7 +486,7 @@ public class DBMS {
 	}
 
 	private String rowidType = null;
-	
+
 	/**
 	 * @return the sqlDialect
 	 */
@@ -431,7 +505,7 @@ public class DBMS {
 	 * Manages session local temporary tables.
 	 */
 	private DefaultTemporaryTableManager sessionTemporaryTableManager = null;
-	
+
 	/**
 	 * Manages transaction local temporary tables.
 	 */
@@ -459,23 +533,23 @@ public class DBMS {
 	public Set<String> getExportBlocks() {
 		return exportBlocks;
 	}
-	
+
 	public void setExportBlocks(Set<String> exportBlocks) {
 		this.exportBlocks = exportBlocks;
 	}
-	
+
 	/**
 	 * Gets the {@link SqlScriptBasedStatisticRenovator}.
-	 * 
+	 *
 	 * @return the {@link SqlScriptBasedStatisticRenovator}
 	 */
 	public SqlScriptBasedStatisticRenovator getStatisticRenovator() {
 		return statisticRenovator;
 	}
-	
+
 	/**
 	 * Sets the {@link SqlScriptBasedStatisticRenovator}.
-	 * 
+	 *
 	 * @param statisticRenovator the {@link SqlScriptBasedStatisticRenovator}
 	 */
 	public void setStatisticRenovator(SqlScriptBasedStatisticRenovator statisticRenovator) {
@@ -493,12 +567,19 @@ public class DBMS {
 	public void setBinaryPattern(String binaryPattern) {
 		this.binaryPattern = binaryPattern;
 	}
-	
+
 	/**
 	 * Sets replacement map for column types used for DDL generation.
 	 */
 	public void setTypeReplacement(Map<String, String> tr) {
 		typeReplacement = tr;
+	}
+
+	/**
+	 * Sets replacement map for column types used for DDL generation. Only used if DBMS accept it.
+	 */
+	public void setExperimentalTypeReplacement(Map<String, String> tr) {
+		experimentalTypeReplacement = tr;
 	}
 
 	/**
@@ -547,12 +628,19 @@ public class DBMS {
 	}
 
 	/**
+	 * Sets replacement map for column types used for DDL generation. Only used if DBMS accept it.
+	 */
+	public Map<String, String> getExperimentalTypeReplacement() {
+		return experimentalTypeReplacement;
+	}
+
+	/**
 	 * Sets manager for session local temporary tables.
 	 */
 	public void setSessionTemporaryTableManager(DefaultTemporaryTableManager tableManager) {
 		sessionTemporaryTableManager = tableManager;
 	}
-	
+
 	/**
 	 * Sets manager for transaction local temporary tables.
 	 */
@@ -614,14 +702,25 @@ public class DBMS {
 	public Map<String, String> getStringLiteralEscapeSequences() {
 		return stringLiteralEscapeSequences;
 	}
-	
+
 	/**
 	 * Converts a string to a string literal according to the {@link #getStringLiteralEscapeSequences()}.
-	 * 
+	 *
 	 * @param string the string to convert
 	 * @return the string literal
 	 */
 	public String convertToStringLiteral(String string) {
+		return convertToStringLiteral(string, null);
+	}
+	
+	/**
+	 * Converts a string to a string literal according to the {@link #getStringLiteralEscapeSequences()}.
+	 *
+	 * @param string the string to convert
+	 * @param prefix literal prefix (optional)
+	 * @return the string literal
+	 */
+	public String convertToStringLiteral(String string, String prefix) {
 		boolean esc = false;
 		for (char c: keysOfCharToEscapeSequence) {
 			if (string.indexOf(c) >= 0) {
@@ -630,16 +729,22 @@ public class DBMS {
 			}
 		}
 		if (!esc) {
+			if (prefix != null) {
+				return prefix + string;
+			}
 			return string;
 		}
-		
+
 		StringBuilder qvalue = new StringBuilder();
 		int l = string.length();
-		
+
 		for (int i = 0; i < l; ++i) {
 			char c = string.charAt(i);
 			String es = charToEscapeSequence.get(c);
 			if (es != null) {
+				if (prefix != null && es.startsWith("'") && es.endsWith("'") && es.length() > 2) {
+					es = es.substring(0, es.length() - 1) + prefix + "'";
+				}
 				qvalue.append(es);
 			} else {
 				qvalue.append(c);
@@ -669,7 +774,7 @@ public class DBMS {
 	public String getSqlLimitSuffix() {
 		return sqlLimitSuffix;
 	}
-	
+
 	public Integer getVarcharLengthLimit() {
 		return varcharLengthLimit;
 	}
@@ -693,13 +798,58 @@ public class DBMS {
 	}
 
 	/**
+	 * @return name of timestamp type with nano-precision, if any
+	 */
+	public String getTimestampWithNanoTypeName() {
+		return timestampWithNanoTypeName;
+	}
+
+	/**
+	 * @param timestampWithNanoTypeName name of timestamp type with nano-precision, if any
+	 */
+	public void setTimestampWithNanoTypeName(String timestampWithNanoTypeName) {
+		this.timestampWithNanoTypeName = timestampWithNanoTypeName;
+	}
+
+	/**
+	 * @return timestampPattern the timestampPattern to set
+	 */
+	public String getTimestampWithNanoPattern() {
+		return timestampWithNanoPattern;
+	}
+
+	/**
+	 * @param timestampWithNanoPattern the timestampPattern to set
+	 */
+	public void setTimestampWithNanoPattern(String timestampWithNanoPattern) {
+		this.timestampWithNanoPattern = timestampWithNanoPattern;
+	}
+
+	/**
+	 * @return the {@link #getTimestampWithNanoPattern()} as {@link SimpleDateFormat}.
+	 */
+	public SimpleDateFormat createTimestampWithNanoFormat() {
+		if (timestampWithNanoPattern == null) {
+			return null;
+		}
+		SimpleDateFormat format = timestampWithNanoFormat.get();
+		if (format == null) {
+			format = new SimpleDateFormat(timestampWithNanoPattern, Locale.ENGLISH);
+			timestampWithNanoFormat.set(format);
+		}
+		return format;
+	}
+
+	/**
 	 * @return the {@link #getTimestampPattern()} as {@link SimpleDateFormat}.
 	 */
 	public SimpleDateFormat createTimestampFormat() {
-		if (timestampFormat == null) {
-			timestampFormat = new SimpleDateFormat(timestampPattern);
+		SimpleDateFormat format = timestampFormat.get();
+		if (format == null) {
+			format = new SimpleDateFormat(timestampPattern, Locale.ENGLISH);
+			timestampFormat.set(format);
 		}
-		return timestampFormat;
+		return format;
 	}
 
 	/**
@@ -720,10 +870,12 @@ public class DBMS {
 	 * @return the {@link #getDatePattern()} as {@link SimpleDateFormat}.
 	 */
 	public SimpleDateFormat createDateFormat() {
-		if (dateFormat == null) {
-			dateFormat = new SimpleDateFormat(datePattern);
+		SimpleDateFormat format = dateFormat.get();
+		if (format == null) {
+			format = new SimpleDateFormat(datePattern, Locale.ENGLISH);
+			dateFormat.set(format);
 		}
-		return dateFormat;
+		return format;
 	}
 
 	/**
@@ -753,10 +905,10 @@ public class DBMS {
 	public void setTableProperties(String tableProperties) {
 		this.tableProperties = tableProperties;
 	}
-	
+
 	/**
 	 * Gets the JDBC properties.
-	 * 
+	 *
 	 * @return the jdbcProperties
 	 */
 	public Map<String, String> getJdbcProperties() {
@@ -765,7 +917,7 @@ public class DBMS {
 
 	/**
 	 * Sets the JDBC properties.
-	 * 
+	 *
 	 * @param jdbcProperties the jdbcProperties to set
 	 */
 	public void setJdbcProperties(Map<String, String> jdbcProperties) {
@@ -785,7 +937,7 @@ public class DBMS {
 	public void setIdentifierQuoteString(String identifierQuoteString) {
 		this.identifierQuoteString = identifierQuoteString;
 	}
-	
+
 	public String getTestQuery() {
 		return testQuery;
 	}
@@ -1115,7 +1267,7 @@ public class DBMS {
 
 	/**
 	 * Gets fetch size.
-	 * 
+	 *
 	 * @return fetch size
 	 */
 	public Integer getFetchSize() {
@@ -1124,11 +1276,19 @@ public class DBMS {
 
 	/**
 	 * Sets fetch size.
-	 * 
+	 *
 	 * @param fetchSize fetch size
 	 */
 	public void setFetchSize(Integer fetchSize) {
 		this.fetchSize = fetchSize;
+	}
+
+	public Map<String, String> getSqlExpressionRule() {
+		return sqlExpressionRule;
+	}
+
+	public void setSqlExpressionRule(Map<String, String> sqlExpressionRule) {
+		this.sqlExpressionRule = sqlExpressionRule;
 	}
 
 	/* (non-Javadoc)

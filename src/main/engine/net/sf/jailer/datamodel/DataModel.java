@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,6 +51,7 @@ import net.sf.jailer.datamodel.filter_template.Clause;
 import net.sf.jailer.datamodel.filter_template.FilterTemplate;
 import net.sf.jailer.extractionmodel.ExtractionModel;
 import net.sf.jailer.extractionmodel.ExtractionModel.AdditionalSubject;
+import net.sf.jailer.extractionmodel.SubjectLimitDefinition;
 import net.sf.jailer.modelbuilder.KnownIdentifierMap;
 import net.sf.jailer.restrictionmodel.RestrictionModel;
 import net.sf.jailer.subsetting.ScriptFormat;
@@ -62,7 +63,7 @@ import net.sf.jailer.util.SqlUtil;
 
 /**
  * Relational data model.
- * 
+ *
  * @author Ralf Wisser
  */
 public class DataModel {
@@ -74,22 +75,22 @@ public class DataModel {
 	 * Maps table-names to tables.
 	 */
 	private Map<String, Table> tables = new HashMap<String, Table>();
-	
+
 	/**
 	 * Maps table display names to tables.
 	 */
 	private Map<String, Table> tablesByDisplayName = new HashMap<String, Table>();
-	
+
 	/**
 	 * Maps tables to display names.
 	 */
 	private Map<Table, String> displayName = new HashMap<Table, String>();
-	
+
 	/**
 	 * Maps association-names to associations;
 	 */
 	public Map<String, Association> namedAssociations = new TreeMap<String, Association>();
-	
+
 	/**
 	 * Set of names of associations for which no decision has been made.
 	 */
@@ -105,13 +106,13 @@ public class DataModel {
 	 */
 	public enum ColumnOrderPriority {
 		HI, LO
-	};
-	
+	}
+
 	/**
 	 * Maps normalized column name to order priority.
 	 */
 	public final Map<String, ColumnOrderPriority> columnOrderPrio = new TreeMap<String, ColumnOrderPriority>();
-	
+
 	/**
 	 * Internal version number. Incremented on each modification.
 	 */
@@ -121,7 +122,7 @@ public class DataModel {
 	 * The execution context.
 	 */
 	private final ExecutionContext executionContext;
-	
+
 	/**
 	 * Default model name.
 	 */
@@ -180,14 +181,14 @@ public class DataModel {
 	private static String getColumnOrderFile(ExecutionContext executionContext) {
 		return getDatamodelFolder(executionContext) + File.separator + "columnorder.csv";
 	}
-	
+
 	/**
 	 * List of tables to be excluded from deletion.
 	 */
 	public static String getExcludeFromDeletionFile(ExecutionContext executionContext) {
 		return getDatamodelFolder(executionContext) + File.separator + "exclude-from-deletion.csv";
 	}
-	
+
 	/**
 	 * Name of file containing the version number.
 	 */
@@ -199,7 +200,7 @@ public class DataModel {
 	 * Export modus, SQL or XML. (GUI support).
 	 */
 	private String exportModus;
-	
+
 	/**
 	 * Holds XML settings for exportation into XML files.
 	 */
@@ -223,7 +224,7 @@ public class DataModel {
 	 * Time of last modification.
 	 */
 	private Long lastModified;
-	
+
 	/**
 	 * The logger.
 	 */
@@ -231,7 +232,7 @@ public class DataModel {
 
 	/**
 	 * Gets a table by name.
-	 * 
+	 *
 	 * @param name the name of the table
 	 * @return the table or <code>null</code> iff no table with the name exists
 	 */
@@ -241,7 +242,7 @@ public class DataModel {
 
 	/**
 	 * Gets a table by display name.
-	 * 
+	 *
 	 * @param displayName the display name of the table
 	 * @return the table or <code>null</code> iff no table with the display name exists
 	 */
@@ -251,7 +252,7 @@ public class DataModel {
 
 	/**
 	 * Gets name of the model.
-	 * 
+	 *
 	 * @return name of the model
 	 */
 	public String getName() {
@@ -260,7 +261,7 @@ public class DataModel {
 
 	/**
 	 * Gets time of last modification.
-	 * 
+	 *
 	 * @return time of last modification
 	 */
 	public Long getLastModified() {
@@ -269,7 +270,7 @@ public class DataModel {
 
 	/**
 	 * Gets display name of a table
-	 * 
+	 *
 	 * @param table the table
 	 * @return the display name of the table
 	 */
@@ -283,13 +284,13 @@ public class DataModel {
 
 	/**
 	 * Gets all tables.
-	 * 
+	 *
 	 * @return a collection of all tables
 	 */
 	public Collection<Table> getTables() {
 		return tables.values();
 	}
-	
+
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
@@ -301,7 +302,7 @@ public class DataModel {
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * @param knownIdentifiers 
+	 * @param knownIdentifiers
 	 */
 	public DataModel(ExecutionContext executionContext) throws IOException {
 		this(null, null, new HashMap<String, String>(), null, new PrimaryKeyFactory(executionContext), executionContext, false, null);
@@ -310,7 +311,7 @@ public class DataModel {
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * @param knownIdentifiers 
+	 * @param knownIdentifiers
 	 */
 	public DataModel(KnownIdentifierMap knownIdentifiers, ExecutionContext executionContext) throws IOException {
 		this(null, null, new HashMap<String, String>(), null, new PrimaryKeyFactory(executionContext), executionContext, false, knownIdentifiers);
@@ -327,7 +328,7 @@ public class DataModel {
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * 
+	 *
 	 * @param additionalTablesFile table file to read too
 	 * @param additionalAssociationsFile association file to read too
 	 */
@@ -338,7 +339,7 @@ public class DataModel {
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * 
+	 *
 	 * @param additionalTablesFile table file to read too
 	 * @param additionalAssociationsFile association file to read too
 	 */
@@ -349,7 +350,7 @@ public class DataModel {
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * 
+	 *
 	 * @param additionalTablesFile table file to read too
 	 * @param additionalAssociationsFile association file to read too
 	 */
@@ -360,22 +361,22 @@ public class DataModel {
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * 
+	 *
 	 * @param additionalTablesFile table file to read too
 	 * @param additionalAssociationsFile association file to read too
-	 * @throws IOException 
+	 * @throws IOException
 	 */
 	public DataModel(String additionalTablesFile, String additionalAssociationsFile, Map<String, String> sourceSchemaMapping, LineFilter assocFilter, PrimaryKeyFactory primaryKeyFactory, ExecutionContext executionContext, boolean failOnMissingTables) throws IOException {
 		this(additionalTablesFile, additionalAssociationsFile, sourceSchemaMapping, assocFilter, primaryKeyFactory, executionContext, failOnMissingTables, null);
 	}
-	
+
 	/**
 	 * Reads in <code>table.csv</code> and <code>association.csv</code>
 	 * and builds the relational data model.
-	 * 
+	 *
 	 * @param additionalTablesFile table file to read too
 	 * @param additionalAssociationsFile association file to read too
-	 * @throws IOException 
+	 * @throws IOException
 	 */
 	public DataModel(String additionalTablesFile, String additionalAssociationsFile, Map<String, String> sourceSchemaMapping, LineFilter assocFilter, PrimaryKeyFactory primaryKeyFactory, ExecutionContext executionContext, boolean failOnMissingTables, KnownIdentifierMap knownIdentifiers) throws IOException {
 		this.executionContext = executionContext;
@@ -436,7 +437,7 @@ public class DataModel {
 				}
 				tables.put(mappedSchemaTableName, table);
 			}
-			
+
 			// column order
 			File orderFile = new File(getColumnOrderFile(executionContext));
 			if (orderFile.exists()) {
@@ -452,7 +453,7 @@ public class DataModel {
 					}
 				}
 			}
-			
+
 			// columns
 			File colFile = new File(getColumnsFile(executionContext));
 			InputStream is = openModelFile(colFile, executionContext);
@@ -474,7 +475,8 @@ public class DataModel {
 						}
 						try {
 							columns.add(Column.parse(newName, col));
-						} catch (Exception e) {
+						} catch (Throwable e) {
+							e.printStackTrace();
 							// ignore
 						}
 					}
@@ -513,7 +515,7 @@ public class DataModel {
 					}
 				}
 			}
-			
+
 			// associations
 			File assFile = new File(getAssociationsFile(executionContext));
 			List<CsvFile.Line> associationList = new ArrayList<CsvFile.Line>(new CsvFile(openModelFile(assFile, executionContext), null, assFile.getPath(), assocFilter).getLines());
@@ -548,7 +550,7 @@ public class DataModel {
 						continue;
 //	                	throw new RuntimeException(associationLoadFailedMessage + "Table '" + line.cells.get(1) + "' not found");
 					}
-					boolean insertSourceBeforeDestination = "A".equalsIgnoreCase(line.cells.get(2)); 
+					boolean insertSourceBeforeDestination = "A".equalsIgnoreCase(line.cells.get(2));
 					boolean insertDestinationBeforeSource = "B".equalsIgnoreCase(line.cells.get(2));
 					Cardinality cardinality = Cardinality.parse(line.cells.get(3).trim());
 					if (cardinality == null) {
@@ -592,7 +594,7 @@ public class DataModel {
 			}
 			initDisplayNames();
 			initTableOrdinals();
-			
+
 			// model name
 			File nameFile = new File(getModelNameFile(executionContext));
 			name = DEFAULT_NAME;
@@ -618,7 +620,7 @@ public class DataModel {
 
 	private final List<Table> tableList = new ArrayList<Table>();
 	private final List<FilterTemplate> filterTemplates = new ArrayList<FilterTemplate>();
-	
+
 	/**
 	 * Initializes table ordinals.
 	 */
@@ -635,7 +637,7 @@ public class DataModel {
 	private void initDisplayNames() throws IOException {
 		Set<String> unqualifiedNames = new HashSet<String>();
 		Set<String> nonUniqueUnqualifiedNames = new HashSet<String>();
-		
+
 		for (Table table: getTables()) {
 			String uName = table.getUnqualifiedName();
 			if (unqualifiedNames.contains(uName)) {
@@ -666,7 +668,7 @@ public class DataModel {
 			this.displayName.put(table, displayName);
 			tablesByDisplayName.put(displayName, table);
 		}
-		
+
 		Map<String, String> userDefinedDisplayNames = new TreeMap<String, String>();
 		File dnFile = new File(DataModel.getDisplayNamesFile(executionContext));
 		if (dnFile.exists()) {
@@ -674,7 +676,7 @@ public class DataModel {
 				userDefinedDisplayNames.put(dnl.cells.get(0), dnl.cells.get(1));
 			}
 		}
-		
+
 		for (Map.Entry<String, String> e: userDefinedDisplayNames.entrySet()) {
 			Table table = getTable(e.getKey());
 			if (table != null && !tablesByDisplayName.containsKey(e.getValue())) {
@@ -688,7 +690,7 @@ public class DataModel {
 			}
 		}
 	}
-	
+
 	/**
 	 * Gets the primary-key to be used for the entity-table.
 	 *
@@ -701,7 +703,7 @@ public class DataModel {
 
 	/**
 	 * Gets the primary-key to be used for the entity-table.
-	 * 
+	 *
 	 * @return the universal primary key
 	 */
 	PrimaryKey getUniversalPrimaryKey() {
@@ -710,7 +712,7 @@ public class DataModel {
 
 	/**
 	 * Gets the restriction model.
-	 * 
+	 *
 	 * @return the restriction model
 	 */
 	public RestrictionModel getRestrictionModel() {
@@ -719,7 +721,7 @@ public class DataModel {
 
 	/**
 	 * Sets the restriction model.
-	 * 
+	 *
 	 * @param restrictionModel the restriction model
 	 */
 	public void setRestrictionModel(RestrictionModel restrictionModel) {
@@ -731,36 +733,36 @@ public class DataModel {
 	 * Gets all independent tables
 	 * (i.e. tables which don't depend on other tables in the set)
 	 * of a given table-set.
-	 * 
+	 *
 	 * @param tableSet the table-set
 	 * @return the sub-set of independent tables of the table-set
 	 */
 	public Set<Table> getIndependentTables(Set<Table> tableSet) {
 		return getIndependentTables(tableSet, null);
 	}
-	
+
 	/**
 	 * Gets all independent tables
 	 * (i.e. tables which don't depend on other tables in the set)
 	 * of a given table-set.
-	 * 
+	 *
 	 * @param tableSet the table-set
 	 * @param associations the associations to consider, <code>null</code> for all associations
 	 * @return the sub-set of independent tables of the table-set
 	 */
 	public Set<Table> getIndependentTables(Set<Table> tableSet, Set<Association> associations) {
 		Set<Table> independentTables = new TreeSet<Table>();
-		
+
 		for (Table table: tableSet) {
 			boolean depends = false;
 			for (Association a: table.associations) {
 				if (associations == null || associations.contains(a)) {
 					if (tableSet.contains(a.destination)) {
-						if (a.getJoinCondition() != null) {
+						// if (a.getJoinCondition() != null) {
 							if (a.isInsertDestinationBeforeSource()) {
 								depends = true;
 								break;
-							}
+						//	}
 						}
 					}
 				}
@@ -781,7 +783,7 @@ public class DataModel {
 		}
 		++version;
 	}
-	
+
 	/**
 	 * Stringifies the data model.
 	 */
@@ -795,17 +797,13 @@ public class DataModel {
 		}
 		for (Table table: sortedTables) {
 			str.append(table);
-			if (printClosures) {
-				str.append("  closure =");
-				str.append(new PrintUtil().tableSetAsString(table.closure(true)) + "\n\n");
-			}
 		}
 		return str.toString();
 	}
 
 	/**
 	 * Gets list of tables sorted by name.
-	 * 
+	 *
 	 * @return list of tables sorted by name
 	 */
 	public List<Table> getSortedTables() {
@@ -821,15 +819,10 @@ public class DataModel {
 	}
 
 	/**
-	 * Printing-mode.
-	 */
-	public static boolean printClosures = false;
-
-	/**
 	 * Normalizes a set of tables.
-	 * 
+	 *
 	 * @param tables set of tables
-	 * @return set of all tables from this model for which a table with same name exists in <code>tables</code> 
+	 * @return set of all tables from this model for which a table with same name exists in <code>tables</code>
 	 */
 	public Set<Table> normalize(Set<Table> tables) {
 		Set<Table> result = new HashSet<Table>();
@@ -855,7 +848,7 @@ public class DataModel {
 	public String getExportModus() {
 		return exportModus;
 	}
-	
+
 	/**
 	 * Sets export modus, SQL or XML. (GUI support).
 	 */
@@ -881,13 +874,13 @@ public class DataModel {
 
 	/**
 	 * Gets internal version number. Incremented on each modification.
-	 * 
+	 *
 	 * @return internal version number. Incremented on each modification.
 	 */
 	public long getVersion() {
 		return version;
 	}
-	
+
 	/**
 	 * Thrown if a table has no primary key.
 	 */
@@ -905,39 +898,40 @@ public class DataModel {
 
 	/**
 	 * Checks whether all tables in the closure of a given subject have primary keys.
-	 * @param hasRowID 
-	 * 
+	 * @param hasRowID
+	 *
 	 * @param subject the subject
 	 * @throws NoPrimaryKeyException if a table has no primary key
 	 */
 	public Set<Table> checkForPrimaryKey(Set<Table> subjects, boolean hasRowID) throws NoPrimaryKeyException {
 		Set<Table> checked = new HashSet<Table>();
 		for (Table subject: subjects) {
-			Set<Table> toCheck = new HashSet<Table>(subject.closure(checked, true));
-			for (Table table: toCheck) {
-				if (!hasRowID) {
-					if (table.primaryKey.getColumns().isEmpty()) {
-						throw new NoPrimaryKeyException(table);
-					}
-				}
-				if (table.getColumns().isEmpty()) {
-					throw new NoPrimaryKeyException(table, "has no column");
+			Set<Table> toCheck = new HashSet<Table>(subject.closure(checked));
+			checked.addAll(toCheck);
+		}
+		DataModel.addRestrictedDependencyWithNulledFK(checked);
+		for (Table table: checked) {
+			if (!hasRowID) {
+				if (table.primaryKey.getColumns().isEmpty()) {
+					throw new NoPrimaryKeyException(table);
 				}
 			}
-			checked.addAll(toCheck);
+			if (table.getColumns().isEmpty()) {
+				throw new NoPrimaryKeyException(table, "has no column");
+			}
 		}
 		return checked;
 	}
 
 	/**
 	 * Gets all parameters which occur in subject condition, association restrictions or XML templates.
-	 * 
+	 *
 	 * @param subjectCondition the subject condition
 	 * @return all parameters which occur in subject condition, association restrictions or XML templates
 	 */
 	public SortedSet<String> getParameters(String subjectCondition, List<ExtractionModel.AdditionalSubject> additionalSubjects) {
 		SortedSet<String> parameters = new TreeSet<String>();
-		
+
 		ParameterHandler.collectParameter(subjectCondition, parameters);
 		if (additionalSubjects != null) {
 			for (AdditionalSubject as: additionalSubjects) {
@@ -990,10 +984,10 @@ public class DataModel {
 			throw new RuntimeException(e);
 		}
 	}
-	
+
 	/**
 	 * Gets {@link #getLastModified()} as String.
-	 * 
+	 *
 	 * @return {@link #getLastModified()} as String
 	 */
 	public String getLastModifiedAsString() {
@@ -1006,21 +1000,38 @@ public class DataModel {
 
 	/**
 	 * Saves the data model.
-	 * 
+	 *
 	 * @param file the file name
-	 * @param stable 
+	 * @param stable
 	 * @param stable the subject table
-	 * @param subjectCondition 
+	 * @param subjectLimitDefinition limit of subject
+	 * @param subjectCondition
 	 * @param scriptFormat
 	 * @param positions table positions or <code>null</code>
-	 * @param additionalSubjects 
+	 * @param additionalSubjects
 	 */
-	public void save(String file, Table stable, String subjectCondition, ScriptFormat scriptFormat, List<RestrictionDefinition> restrictionDefinitions, Map<String, Map<String, double[]>> positions, List<AdditionalSubject> additionalSubjects, String currentModelSubfolder) throws FileNotFoundException {
+	public void save(String file, Table stable, SubjectLimitDefinition subjectLimitDefinition, String subjectCondition, ScriptFormat scriptFormat, List<RestrictionDefinition> restrictionDefinitions, Map<String, Map<String, double[]>> positions, List<AdditionalSubject> additionalSubjects, String currentModelSubfolder) throws FileNotFoundException {
 		File extractionModel = new File(file);
 		PrintWriter out = new PrintWriter(extractionModel);
-		out.println("# subject; condition");
-		out.println(CsvFile.encodeCell("" + stable.getName()) + "; " + CsvFile.encodeCell(subjectCondition));
+		out.println("# subject; condition; limit; limit-order");
+		out.println(
+				CsvFile.encodeCell("" + stable.getName()) + "; " +
+				CsvFile.encodeCell(subjectCondition) + "; " +
+				CsvFile.encodeCell(subjectLimitDefinition.limit == null? "" : subjectLimitDefinition.limit.toString()) + "; " +
+				CsvFile.encodeCell(subjectLimitDefinition.orderBy == null? "" : subjectLimitDefinition.orderBy)
+				);
 		saveRestrictions(out, restrictionDefinitions);
+		out.println();
+		out.println(CsvFile.BLOCK_INDICATOR + "additional subjects");
+		out.println("# subject; condition; limit; limit-order");
+		for (AdditionalSubject as: additionalSubjects) {
+			out.println(
+					CsvFile.encodeCell("" + as.getSubject().getName()) + "; " +
+					CsvFile.encodeCell(as.getCondition()) + "; " +
+					CsvFile.encodeCell(as.getSubjectLimitDefinition().limit == null? "" : as.getSubjectLimitDefinition().limit.toString()) + "; " +
+					CsvFile.encodeCell(as.getSubjectLimitDefinition().orderBy == null? "" : as.getSubjectLimitDefinition().orderBy)
+					);
+		}
 		saveXmlMapping(out);
 		out.println();
 		out.println(CsvFile.BLOCK_INDICATOR + "datamodelfolder");
@@ -1028,16 +1039,11 @@ public class DataModel {
 			out.println(currentModelSubfolder);
 		}
 		out.println();
-		out.println(CsvFile.BLOCK_INDICATOR + "additional subjects");
-		for (AdditionalSubject as: additionalSubjects) {
-			out.println(CsvFile.encodeCell("" + as.getSubject().getName()) + "; " + CsvFile.encodeCell(as.getCondition()) + ";");
-		}
-		out.println();
 		out.println(CsvFile.BLOCK_INDICATOR + "export modus");
 		out.println(scriptFormat);
 		out.println();
 		out.println(CsvFile.BLOCK_INDICATOR + "xml settings");
-		out.println(CsvFile.encodeCell(getXmlSettings().datePattern) + ";" + 
+		out.println(CsvFile.encodeCell(getXmlSettings().datePattern) + ";" +
 				CsvFile.encodeCell(getXmlSettings().timestampPattern) + ";" +
 				CsvFile.encodeCell(getXmlSettings().rootTag));
 		out.println(CsvFile.BLOCK_INDICATOR + "xml column mapping");
@@ -1067,7 +1073,7 @@ public class DataModel {
 		} else {
 			executionContext.getLayoutStorage().store(out, positions);
 		}
-		
+
 		out.println();
 		out.println(CsvFile.BLOCK_INDICATOR + "known");
 		out.println("# known association; decision pending");
@@ -1078,7 +1084,7 @@ public class DataModel {
 				}
 			}
 		}
-		
+
 		out.println();
 		out.println(CsvFile.BLOCK_INDICATOR + "version");
 		out.println(JailerVersion.VERSION);
@@ -1087,7 +1093,7 @@ public class DataModel {
 
 	/**
 	 * Saves xml mappings.
-	 * 
+	 *
 	 * @param out to save xml mappings into
 	 */
 	private void saveXmlMapping(PrintWriter out) {
@@ -1105,9 +1111,9 @@ public class DataModel {
 
 	/**
 	 * Saves restrictions only.
-	 * 
+	 *
 	 * @param out to save restrictions into
-	 * @param restrictionDefinitions 
+	 * @param restrictionDefinitions
 	 */
 	private void saveRestrictions(PrintWriter out, List<RestrictionDefinition> restrictionDefinitions) {
 		out.println();
@@ -1124,7 +1130,7 @@ public class DataModel {
 
 	/**
 	 * Saves restrictions only.
-	 * 
+	 *
 	 * @param file to save restrictions into
 	 */
 	public void saveRestrictions(File file, List<RestrictionDefinition> restrictionDefinitions) throws FileNotFoundException {
@@ -1135,7 +1141,7 @@ public class DataModel {
 
 	/**
 	 * Saves filters.
-	 * 
+	 *
 	 * @param out to save filters into
 	 */
 	private void saveFilters(PrintWriter out) {
@@ -1155,7 +1161,7 @@ public class DataModel {
 
 	/**
 	 * Saves filter templates.
-	 * 
+	 *
 	 * @param out to save filters into
 	 */
 	private void saveFilterTemplates(PrintWriter out) {
@@ -1192,7 +1198,7 @@ public class DataModel {
 
 	/**
 	 * Gets table by {@link Table#getOrdinal()}.
-	 * 
+	 *
 	 * @param ordinal the ordinal
 	 * @return the table
 	 */
@@ -1202,7 +1208,7 @@ public class DataModel {
 
 	/**
 	 * Gets the {@link FilterTemplate}s ordered by priority.
-	 * 
+	 *
 	 * @return template list
 	 */
 	public List<FilterTemplate> getFilterTemplates() {
@@ -1210,7 +1216,7 @@ public class DataModel {
 	}
 
 	private Map<Association, Map<Column, Column>> sToDMaps = new HashMap<Association, Map<Column,Column>>();
-	
+
 	/**
 	 * Removes all derived filters and renews them.
 	 */
@@ -1244,7 +1250,7 @@ public class DataModel {
 				}
 			}
 		}
-		
+
 		// apply templates
 		for (FilterTemplate template: getFilterTemplates()) {
 			if (template.isEnabled()) {
@@ -1286,6 +1292,17 @@ public class DataModel {
 				}
 			}
 		}
+	}
+
+	public static void addRestrictedDependencyWithNulledFK(Set<Table> tables) {
+		Set<Table> toAdd = new HashSet<Table>();
+		tables.forEach(table -> table.associations.forEach(association -> {
+			if (association.reversalAssociation.isRestrictedDependencyWithNulledFK() || association.isRestrictedDependencyWithNulledFK()) {
+				toAdd.add(association.source);
+				toAdd.add(association.destination);
+			}
+		}));
+		tables.addAll(toAdd);
 	}
 
 }

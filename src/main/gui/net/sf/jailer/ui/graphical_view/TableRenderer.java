@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,12 +36,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import javax.swing.ImageIcon;
-
 import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
+import net.sf.jailer.ui.UIUtil;
 import prefuse.Constants;
 import prefuse.render.AbstractShapeRenderer;
 import prefuse.render.ImageFactory;
@@ -84,7 +83,7 @@ public abstract class TableRenderer extends AbstractShapeRenderer {
 	protected int m_maxTextWidth = -1;
 	
 	/** Transform used to scale and position images */
-	AffineTransform m_transform = new AffineTransform();
+	AffineTransform transform = new AffineTransform();
 	
 	/** The holder for the currently computed bounding box */
 	protected RectangularShape m_bbox  = new Rectangle2D.Double();
@@ -456,15 +455,15 @@ public abstract class TableRenderer extends AbstractShapeRenderer {
 			int fillColor = item.getFillColor();
 			Integer pos = graphicalDataModelView.tablesOnPath.get(tableName);
 			if (pos != null) {
-				final int PERIOD = 6000;
-				double d = Math.sin((((System.currentTimeMillis() - pos * 500) % PERIOD) / (double) PERIOD) * 2 * Math.PI);
+				final int PERIOD = 4000;
+				double d = Math.sin((((System.currentTimeMillis() - pos * 300) % PERIOD) / (double) PERIOD) * 2 * Math.PI);
 				d = Math.pow(d *= d, 2.2);
-				double f = isSelected || graphicalDataModelView.tablesOnPath.size() <= 3? 0.0 : 0.70 * d;
+				double f = isSelected || graphicalDataModelView.tablesOnPath.size() <= 3? 0.0 : 0.50 * d;
 				fillColor = ColorLib.rgba(
 						ColorLib.interp(76, 240, f),
 						ColorLib.interp(230, 120, f),
 						ColorLib.interp(255, 90, f),
-						76);
+						65);
 			}
 			paint(g, item, fillColor, shape, itemStroke != null? itemStroke : new BasicStroke(isSelected? 1 : 0), isSelected? RENDER_TYPE_DRAW_AND_FILL : RENDER_TYPE_FILL);
 			if (table != null) {
@@ -547,8 +546,8 @@ public abstract class TableRenderer extends AbstractShapeRenderer {
 				break;
 			}
 			
-			m_transform.setTransform(size * imgScale(i),0,0,size * imgScale(i),ix,iy);
-			g.drawImage(i, m_transform, null);
+			transform.setTransform(size * imgScale(i),0,0,size * imgScale(i),ix,iy);
+			g.drawImage(i, transform, null);
 			
 			if (i == collapsedImage || i == collapsedRedImage) {
 				g.setFont(m_font3);
@@ -622,8 +621,8 @@ public abstract class TableRenderer extends AbstractShapeRenderer {
 					b = line.substring(tab + 1);
 					if (a.startsWith("!")) {
 						if (filterImage != null) {
-							m_transform.setTransform(size * imgScale(filterImage) * 0.6, 0, 0, size * imgScale(filterImage) * 0.6, x - filterImage.getWidth(null) * imgScale(filterImage) * 0.9, y - lh * 0.75);
-							g.drawImage(filterImage, m_transform, null);
+							transform.setTransform(size * imgScale(filterImage) * 0.6, 0, 0, size * imgScale(filterImage) * 0.6, x - filterImage.getWidth(null) * imgScale(filterImage) * 0.9, y - lh * 0.75);
+							g.drawImage(filterImage, transform, null);
 						}
 						a = a.substring(1);
 					}
@@ -1203,39 +1202,13 @@ public abstract class TableRenderer extends AbstractShapeRenderer {
 	private Image subjectImage = null;
 	private Image filterImage = null;
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-		
 		// load images
-		try {
-			excludeFromDeletionImage = new ImageIcon(getClass().getResource(dir + "/database-lock.png")).getImage();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			collapsedImage = new ImageIcon(getClass().getResource(dir + "/collapsed.png")).getImage();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			collapsedRedImage = new ImageIcon(getClass().getResource(dir + "/collapsedred.png")).getImage();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			upsertImage = new ImageIcon(getClass().getResource(dir + "/upsert.png")).getImage();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			subjectImage = new ImageIcon(getClass().getResource(dir + "/subject.png")).getImage();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			filterImage = new ImageIcon(getClass().getResource(dir + "/filter.png")).getImage();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		try { excludeFromDeletionImage = UIUtil.readImage("/database-lock.png").getImage(); } catch (Throwable t) {}
+		try { collapsedImage = UIUtil.readImage("/collapsed.png").getImage(); } catch (Throwable t) {}
+		try { collapsedRedImage = UIUtil.readImage("/collapsedred.png").getImage(); } catch (Throwable t) {}
+		try { upsertImage = UIUtil.readImage("/upsert.png").getImage(); } catch (Throwable t) {}
+		try { subjectImage = UIUtil.readImage("/subject.png").getImage(); } catch (Throwable t) {}
+		try { filterImage = UIUtil.readImage("/filter.png").getImage(); } catch (Throwable t) {}
 	}
 	
 }

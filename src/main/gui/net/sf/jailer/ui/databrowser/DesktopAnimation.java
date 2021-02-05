@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,8 @@ public class DesktopAnimation {
 	private final double DURATION = 750;
 	private final double FAST_LINEAR_DURATION = DURATION / 4;
 	private final Desktop desktop;
+	
+	private static final boolean PRINT_FPS = false;
 
 	/**
 	 * Animation.
@@ -56,7 +58,7 @@ public class DesktopAnimation {
 			stopScrolling = false;
 		}
 		abstract boolean animate(double f);
-	};
+	}
 
 	/**
 	 * Animation per subject (started).
@@ -151,6 +153,10 @@ public class DesktopAnimation {
 		}
 	}
 
+	private long startTime = 0;
+	private long count = 0;
+	private boolean lastResult;
+    
 	/**
 	 * Performs an animation step for each animation. 
 	 */
@@ -183,6 +189,15 @@ public class DesktopAnimation {
 			}
 		}
 		desktop.checkDesktopSize();
+		if (PRINT_FPS) {
+			++count;
+			if (lastResult != result) {
+				System.out.println(result + ": " + (1000.0 * count / (double) (System.currentTimeMillis() - startTime)) + " FPS ");
+				startTime = System.currentTimeMillis();
+				lastResult = result;
+				count = 0;
+			}
+		}
 		return result;
 	}
 

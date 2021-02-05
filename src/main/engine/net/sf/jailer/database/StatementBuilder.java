@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,6 +69,8 @@ public class StatementBuilder {
 	 * @param head the statements head
 	 * @param item the item
 	 * @return <code>true</code> iff item is appendable
+	 * 
+	 * @deprecated use {@link #isAppendable(String)} instead
 	 */
 	public boolean isAppendable(String head, String item) {
 		return body.size() < maxBodySize && (this.head == null || this.head.equals(head));

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,12 +24,14 @@ import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
-
-import javax.swing.ImageIcon;
+import java.util.HashMap;
+import java.util.Map;
 
 import net.sf.jailer.datamodel.AggregationSchema;
 import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.Cardinality;
+import net.sf.jailer.datamodel.DataModel;
+import net.sf.jailer.ui.UIUtil;
 import prefuse.Constants;
 import prefuse.render.EdgeRenderer;
 import prefuse.util.ColorLib;
@@ -39,7 +41,7 @@ import prefuse.visual.VisualItem;
 
 /**
  * Renderer for {@link Association}s.
- * 
+ *
  * @author Ralf Wisser
  */
 public class AssociationRenderer extends EdgeRenderer {
@@ -49,7 +51,7 @@ public class AssociationRenderer extends EdgeRenderer {
 	public static Color COLOR_ASSOCIATION;
 	public static Color COLOR_DEPENDENCY;
 	public static Color COLOR_REVERSE_DEPENDENCY;
-	
+
 	/**
 	 * <code>true</code> for reversed rendering.
 	 */
@@ -60,34 +62,39 @@ public class AssociationRenderer extends EdgeRenderer {
 	 */
 	boolean full = false;
 
+	private final DataModel dataModel;
+
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param reversed <code>true</code> for reversed rendering
 	 */
-	public AssociationRenderer(boolean reversed) {
+	public AssociationRenderer(DataModel dataModel, boolean reversed) {
 		super(Constants.EDGE_TYPE_LINE, reversed? Constants.EDGE_ARROW_REVERSE : Constants.EDGE_ARROW_FORWARD);
+		this.dataModel = dataModel;
 		this.reversed = reversed;
 	}
 
 	/**
 	 * Constructor.
 	 */
-	public AssociationRenderer() {
+	public AssociationRenderer(DataModel dataModel) {
+		this.dataModel = dataModel;
 		full = true;
 	}
-	
+
 	/**
 	 * Temporary used in getRawShape.
 	 */
 	private Point2D m_isctPoints2[] = new Point2D[2];
 	private Point2D starPosition = null;
+	private Point2D midPosition = null;
 	private Point2D pendingPosition = null;
-	
+
 	/**
 	 * Return a non-transformed shape for the visual representation of the
 	 * {@link Association}.
-	 * 
+	 *
 	 * @param item the VisualItem being drawn
 	 * @return the "raw", untransformed shape
 	 */
@@ -96,7 +103,7 @@ public class AssociationRenderer extends EdgeRenderer {
 		EdgeItem   edge = (EdgeItem)item;
 		VisualItem item1 = edge.getSourceItem();
 		VisualItem item2 = edge.getTargetItem();
-		
+
 		int type = m_edgeType;
 		boolean reversedCurve = false;
 		Association association = (Association) item.get("association");
@@ -104,14 +111,14 @@ public class AssociationRenderer extends EdgeRenderer {
 			type = Constants.EDGE_TYPE_CURVE;
 			reversedCurve = association.reversed;
 		}
-		
+
 		getAlignedPoint(m_tmpPoints[0], item1.getBounds(),
 						m_xAlign1, m_yAlign1);
 		getAlignedPoint(m_tmpPoints[1], item2.getBounds(),
 						m_xAlign2, m_yAlign2);
 		m_curWidth = (float)(m_width * getLineWidth(item));
 		EdgeItem e = (EdgeItem)item;
-		
+
 		boolean forward = (m_edgeArrow == Constants.EDGE_ARROW_FORWARD);
 
 		// get starting and ending edge endpoints
@@ -123,7 +130,7 @@ public class AssociationRenderer extends EdgeRenderer {
 			double midX;
 			double midY;
 			Point2D sp = start, ep = end;
-			
+
 			VisualItem dest = forward ? e.getTargetItem() : e.getSourceItem();
 			int i = GraphicsLib.intersectLineRectangle(start, end,
 					dest.getBounds(), m_isctPoints);
@@ -133,12 +140,12 @@ public class AssociationRenderer extends EdgeRenderer {
 			i = GraphicsLib.intersectLineRectangle(start, end,
 					src.getBounds(), m_isctPoints2);
 			if ( i > 0 ) sp = m_isctPoints2[0];
-			
+
 			midX = (sp.getX() + ep.getX()) / 2;
 			midY = (sp.getY() + ep.getY()) / 2;
 			m_tmpPoints[reversed? 1 : 0].setLocation(midX, midY);
 		}
-		
+
 		// create the arrow head, if needed
 		if ( e.isDirected() && m_edgeArrow != Constants.EDGE_ARROW_NONE) {
 			if (type == Constants.EDGE_TYPE_CURVE) {
@@ -151,17 +158,17 @@ public class AssociationRenderer extends EdgeRenderer {
 				start.setLocation(start.getX() + shift.getX(), start.getY() + shift.getY());
 				end.setLocation(end.getX() + shift.getX(), end.getY() + shift.getY());
 			}
-			
+
 			// compute the intersection with the target bounding box
 			VisualItem dest = forward ? e.getTargetItem() : e.getSourceItem();
 			int i = GraphicsLib.intersectLineRectangle(start, end,
 					dest.getBounds(), m_isctPoints);
 			if ( i > 0 ) end = m_isctPoints[0];
-			
+
 			// create the arrow head shape
 			AffineTransform at = getArrowTrans(start, end, m_curWidth);
 			m_curArrow = at.createTransformedShape(m_arrowHead);
-			
+
 			// update the endpoints for the edge shape
 			// need to bias this by arrow head size
 			if (type == Constants.EDGE_TYPE_CURVE) {
@@ -169,13 +176,13 @@ public class AssociationRenderer extends EdgeRenderer {
 					m_curArrow = null;
 				}
 			}
-			Point2D lineEnd = m_tmpPoints[forward?1:0]; 
+			Point2D lineEnd = m_tmpPoints[forward?1:0];
 			lineEnd.setLocation(0, type == Constants.EDGE_TYPE_CURVE? 0 : -m_arrowHeight);
 			at.transform(lineEnd, lineEnd);
 		} else {
 			m_curArrow = null;
 		}
-		
+
 		// create the edge shape
 		Shape shape = null;
 		double n1x = m_tmpPoints[0].getX();
@@ -184,10 +191,11 @@ public class AssociationRenderer extends EdgeRenderer {
 		double n2y = m_tmpPoints[1].getY();
 		m_line.setLine(n1x, n1y, n2x, n2y);
 		shape = m_line;
-		
+
 		starBounds = null;
 		starPosition = null;
-		
+		midPosition = new Point2D.Double((n1x + n2x) / 2, (n1y + n2y) / 2);
+
 		if (!forward && (Cardinality.MANY_TO_MANY.equals(association.getCardinality()) || Cardinality.MANY_TO_ONE.equals(association.getCardinality()))
 		||   forward && (Cardinality.MANY_TO_MANY.equals(association.getCardinality()) || Cardinality.ONE_TO_MANY.equals(association.getCardinality()))) {
 			starPosition = new Point2D.Double(m_tmpPoints[forward? 1:0].getX(), m_tmpPoints[forward? 1:0].getY());
@@ -205,7 +213,7 @@ public class AssociationRenderer extends EdgeRenderer {
 
 		pendingBounds = null;
 		pendingPosition = null;
-		
+
 		if (!forward && association.getDataModel().decisionPending.contains(association.getName())
 		||   forward && association.getDataModel().decisionPending.contains(association.reversalAssociation.getName())) {
 			pendingPosition = new Point2D.Double(m_tmpPoints[forward? 1:0].getX(), m_tmpPoints[forward? 1:0].getY());
@@ -228,11 +236,11 @@ public class AssociationRenderer extends EdgeRenderer {
 	 * line segment end points.
 	 */
 	@Override
-	protected AffineTransform getArrowTrans(Point2D p1, Point2D p2, 
+	protected AffineTransform getArrowTrans(Point2D p1, Point2D p2,
 											double width)
 	{
 		m_arrowTrans.setToTranslation(p2.getX(), p2.getY());
-		m_arrowTrans.rotate(-HALF_PI + 
+		m_arrowTrans.rotate(-HALF_PI +
 			Math.atan2(p2.getY()-p1.getY(), p2.getX()-p1.getX()));
 		if ( width > 1 ) {
 			double scalar = width/2;
@@ -243,7 +251,7 @@ public class AssociationRenderer extends EdgeRenderer {
 
 	/**
 	 * Renders an {@link Association}.
-	 * 
+	 *
 	 * @param g the 2D graphics
 	 * @param item visual item for the association
 	 * @param isSelected <code>true</code> for selected association
@@ -251,17 +259,21 @@ public class AssociationRenderer extends EdgeRenderer {
 	public void render(Graphics2D g, VisualItem item, boolean isSelected) {
 		Association association = (Association) item.get("association");
 		item.setSize(isSelected? 3 : 1);
-		int color;
+		int color = 0;
 		if (!Boolean.TRUE.equals(item.get("full"))) {
 			if (!full) {
 				return;
 			}
-			color = associationColor(association);
+			if (association != null) {
+				color = associationColor(association);
+			}
 		} else {
 			if (full) {
 				return;
 			}
-			color = reversed? associationColor(association.reversalAssociation) : associationColor(association);
+			if (association != null) {
+				color = reversed? associationColor(association.reversalAssociation) : associationColor(association);
+			}
 		}
 		boolean restricted = false;
 		BasicStroke stroke = item.getStroke();
@@ -272,7 +284,7 @@ public class AssociationRenderer extends EdgeRenderer {
 				}
 			}
 			if (association != null && association.isRestricted() && !association.isIgnored()) {
-				item.setStroke(new BasicStroke(stroke.getLineWidth(), stroke.getEndCap(), stroke.getLineJoin(), stroke.getMiterLimit(), 
+				item.setStroke(new BasicStroke(stroke.getLineWidth(), stroke.getEndCap(), stroke.getLineJoin(), stroke.getMiterLimit(),
 					new float[] { 8f, 6f }, 1.0f));
 				restricted = true;
 			} else {
@@ -299,7 +311,7 @@ public class AssociationRenderer extends EdgeRenderer {
 		}
 		item.setFillColor(color);
 		item.setStrokeColor(color);
-		if ("XML".equals(association.getDataModel().getExportModus())) {
+		if (association != null && "XML".equals(association.getDataModel().getExportModus())) {
 			m_arrowHead = updateArrowHead(m_arrowWidth, m_arrowHeight, association, isSelected);
 			arrowIsPotAggregation = true;
 		} else {
@@ -310,6 +322,7 @@ public class AssociationRenderer extends EdgeRenderer {
 		}
 		starPosition = null;
 		pendingPosition = null;
+		midPosition = null;
 		render(g, item);
 		if (starPosition != null && starImage != null) {
 			double size = STAR_SIZE;
@@ -322,6 +335,23 @@ public class AssociationRenderer extends EdgeRenderer {
 			transform.setTransform(size, 0, 0, size, pendingPosition.getX() - size * (pendingWidth / 2), pendingPosition.getY() - size * (pendingHeight / 2));
 			g.drawImage(pendingImage, transform, null);
 			pendingPosition = null;
+		}
+		if (midPosition != null) {
+			if (dataModel.version != lastDataModelVersion) {
+				withNullFK.clear();
+				lastDataModelVersion = dataModel.version;
+			}
+			Boolean isFKNull = withNullFK.get(association);
+			if (isFKNull == null) {
+				isFKNull = association.isRestrictedDependencyWithNulledFK() && !association.fkHasExcludeFilter();
+				withNullFK.put(association, isFKNull);
+			}
+			if (isFKNull) {
+				int r = 5;
+				g.setStroke(new BasicStroke(1.5f));
+				g.setColor(new Color(color));
+				g.drawOval((int) midPosition.getX() - r, (int) midPosition.getY() - r, 2 * r, 2 * r);
+			}
 		}
 	}
 
@@ -349,10 +379,12 @@ public class AssociationRenderer extends EdgeRenderer {
 	private AffineTransform transform = new AffineTransform();
 	private Rectangle2D starBounds = null;
 	private Rectangle2D pendingBounds = null;
-	
+	private long lastDataModelVersion = -1;
+	private Map<Association, Boolean> withNullFK = new HashMap<Association, Boolean>();
+
 	/**
 	 * Gets color for association.
-	 * 
+	 *
 	 * @param association the association
 	 * @return the color for the association
 	 */
@@ -373,7 +405,7 @@ public class AssociationRenderer extends EdgeRenderer {
 	 * Returns true if the Point is located inside the extents of the item.
 	 * This calculation matches against the exact item shape, and so is more
 	 * sensitive than just checking within a bounding box.
-	 * 
+	 *
 	 * @param p the point to test for containment
 	 * @param item the item to test containment against
 	 * @return true if the point is contained within the the item, else false
@@ -421,14 +453,14 @@ public class AssociationRenderer extends EdgeRenderer {
 
 	/**
 	 * Checks whether association must be rendered as aggregation.
-	 * 
+	 *
 	 * @param association the association to check
 	 * @return <code>true</code> if association must be rendered as aggregation
 	 */
 	private boolean isAggregation(Association association) {
 		return association.reversalAssociation.getAggregationSchema() != AggregationSchema.NONE;
 	}
-	
+
 	private Image starImage = null;
 	private double starWidth = 0;
 	private double starHeight = 0;
@@ -440,17 +472,19 @@ public class AssociationRenderer extends EdgeRenderer {
 	{
 		// load images
 		try {
-			String dir = "/net/sf/jailer/ui/resource";
-			
-			starImage = new ImageIcon(getClass().getResource(dir + "/star.png")).getImage();
+			starImage = UIUtil.readImage("/star.png").getImage();
 			starWidth = starImage.getWidth(null);
 			starHeight = starImage.getHeight(null);
-			pendingImage = new ImageIcon(getClass().getResource(dir + "/wanr.png")).getImage();
+		} catch (Throwable t) {
+			// ignore
+		}
+		try {
+			pendingImage = UIUtil.readImage("/wanr.png").getImage();
 			pendingWidth = pendingImage.getWidth(null);
 			pendingHeight = pendingImage.getHeight(null);
-		} catch (Exception e) {
-			e.printStackTrace();
+		} catch (Throwable t) {
+			// ignore
 		}
 	}
-	
+
 }

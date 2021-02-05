@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,6 +79,25 @@ public class Row {
 	 */
 	public void setParentModelIndex(int parentModelIndex) {
 		this.parentModelIndex = parentModelIndex;
+	}
+
+	/**
+	 * The inherited block number.
+	 */
+	private int inheritedParentModelIndex = 0;
+
+	/**
+	 * @return the parentModelIndex
+	 */
+	public int getInheritedParentModelIndex() {
+		return inheritedParentModelIndex;
+	}
+
+	/**
+	 * @param inheritedParentModelIndex the inheritedParentModelIndex to set
+	 */
+	public void setInheritedParentModelIndex(int inheritedParentModelIndex) {
+		this.inheritedParentModelIndex = inheritedParentModelIndex;
 	}
 
 	private static long nextUniqueId = 0;

@@ -68,7 +68,11 @@ public class DataModelBasedSQLCompletionProvider extends SQLCompletionProvider<D
 
 	@Override
 	protected List<Table> getTables(String schema) {
-		return tablesPerSchema.get(schema);
+		List<Table> result = tablesPerSchema.get(schema);
+		if (result == null) {
+			result = new ArrayList<Table>();
+		}
+		return result;
 	}
 
 	@Override
@@ -90,6 +94,11 @@ public class DataModelBasedSQLCompletionProvider extends SQLCompletionProvider<D
 			}
 		}
 		return result;
+	}
+
+	@Override
+	protected boolean isInitialized() {
+		return true;
 	}
 
 }

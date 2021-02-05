@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,18 +64,20 @@ public abstract class DetailsView extends javax.swing.JPanel {
 	private final RowIdSupport rowIdSupport;
 	private final boolean showSpinner;
 	private final Session session;
+	private final String[] alternativeColumnLabels;
 
 	/** Creates new form DetailsView 
 	 * @param rowSorter 
 	 * @param showSelectButton 
 	 * @param deselect 
 	*/
-	public DetailsView(List<Row> rows, int size, DataModel dataModel, Table table, int rowIndex, RowSorter<? extends TableModel> rowSorter, boolean showSpinner, boolean showSelectButton, RowIdSupport rowIdSupport, boolean deselect, Session session) {
+	public DetailsView(List<Row> rows, int size, DataModel dataModel, Table table, int rowIndex, RowSorter<? extends TableModel> rowSorter, boolean showSpinner, boolean showSelectButton, RowIdSupport rowIdSupport, boolean deselect, String[] alternativeColumnLabels, Session session) {
 		this.table = table;
 		this.rows = rows;
 		this.rowSorter = rowSorter;
 		this.rowIdSupport = rowIdSupport;
 		this.showSpinner = showSpinner;
+		this.alternativeColumnLabels = alternativeColumnLabels;
 		this.session = session;
 		initComponents();
 		if (deselect) {
@@ -146,14 +148,27 @@ public abstract class DetailsView extends javax.swing.JPanel {
         setCurrentRow(rowIndex, showSpinner);
 	}
 
-	private final Font font = new JLabel().getFont();
-	private final Font nonbold = new Font(font.getName(), font.getStyle() & ~Font.BOLD, font.getSize()); 
-	private final Font italic = new Font(font.getName(), font.getStyle() & ~Font.BOLD | Font.ITALIC, font.getSize()); 
-	private final Color BG1 = new Color(255, 255, 255);
-	private final Color BG2 = new Color(242, 255, 242);
-	private final Color BG3 = new Color(194, 228, 255);
-	private final Color BG3_2 = new Color(184, 220, 255);
-	private final Color FG1 = new Color(155, 0, 0);
+	/**
+	 * Default constructor.
+	 */
+	protected DetailsView() {
+		this.table = null;
+		this.showSpinner = false;
+		this.session = null;
+		this.rows = null;
+		this.rowSorter = null;
+		this.rowIdSupport = null;
+		this.alternativeColumnLabels = null;
+	}
+
+	private static final Font font = new JLabel().getFont();
+	private static final Font nonbold = new Font(font.getName(), font.getStyle() & ~Font.BOLD, font.getSize()); 
+	private static final Font italic = new Font(font.getName(), font.getStyle() & ~Font.BOLD | Font.ITALIC, font.getSize()); 
+	private static final Color BG1 = new Color(255, 255, 255);
+	private static final Color BG2 = new Color(242, 255, 242);
+	private static final Color BG3 = blend(new Color(196, 234, 255), BG1);
+	private static final Color BG3_2 = blend(new Color(184, 226, 255), BG2);
+	private static final Color FG1 = new Color(155, 0, 0);
 	private List<JLabel> labels = new ArrayList<JLabel>();
 	private List<Color> labelColors = new ArrayList<Color>();
 	
@@ -161,6 +176,14 @@ public abstract class DetailsView extends javax.swing.JPanel {
 		jScrollPane1.setBorder(BorderFactory.createEtchedBorder(color, Color.GRAY));
 	}
 	
+	private static Color blend(Color a, Color b) {
+		final double f = 0.6;
+		return new Color(
+				(int)(a.getRed() * f + b.getRed() * (1 - f)),
+				(int)(a.getGreen() * f + b.getGreen() * (1 - f)),
+				(int)(a.getBlue() * f + b.getBlue() * (1 - f)));
+	}
+
 	private int currentRow;
 	private boolean sortColumns;
 	private JPanel content;
@@ -193,14 +216,32 @@ public abstract class DetailsView extends javax.swing.JPanel {
 			Collections.sort(columnIndex, new Comparator<Integer>() {
 				@Override
 				public int compare(Integer o1, Integer o2) {
-					return Quoting.staticUnquote(columns.get(o1).name).compareTo(Quoting.staticUnquote(columns.get(o2).name));
+					String o1Name = columns.get(o1).name;
+					if (o1Name == null && alternativeColumnLabels != null && alternativeColumnLabels.length > o1) {
+						o1Name = alternativeColumnLabels[o1];
+					}
+					String o2Name = columns.get(o2).name;
+					if (o2Name == null && alternativeColumnLabels != null && alternativeColumnLabels.length > o2) {
+						o2Name = alternativeColumnLabels[o2];
+					}
+					if (o1Name == null || o2Name == null) {
+						if (o1Name == null && o2Name == null) {
+							return 0;
+						}
+						if (o1Name == null) {
+							return 1;
+						} else {
+							return -1;
+						}
+					}
+					return Quoting.staticUnquote(o1Name).compareTo(Quoting.staticUnquote(o2Name));
 				}
 			});
 		}
 		while (i < columns.size()) {
 			Column c = columns.get(columnIndex.get(i));
 			JLabel l = new JLabel();
-			l.setText(" " + c.name + "    ");
+			l.setText(" " + (c.name != null? c.name + "    " : (alternativeColumnLabels != null && alternativeColumnLabels.length > columnIndex.get(i)? alternativeColumnLabels[columnIndex.get(i)] : "")));
 			l.setFont(nonbold);
 			gridBagConstraints = new java.awt.GridBagConstraints();
 			gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;

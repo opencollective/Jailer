@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 
 import net.sf.jailer.configuration.Configuration;
+import net.sf.jailer.util.LogUtil;
 import net.sf.jailer.util.Quoting;
 
 /**
@@ -37,12 +38,21 @@ public class PrimaryKey {
 	private final List<Column> columns;
 	
 	/**
+	 * <code>true</code> if match with UPK must be ordered.
+	 */
+	private final boolean needsOrderedMatch;
+
+	public int numberOfIndexedPKColumns;
+
+	/**
 	 * Constructor.
 	 * 
 	 * @param primaryKeyColumns the primary-key columns
+	 * @param needsOrderedMatch <code>true</code> if match with UPK must be ordered
 	 */
-	PrimaryKey(List<Column> columns) {
+	public PrimaryKey(List<Column> columns, boolean needsOrderedMatch) {
 		this.columns = columns;
+		this.needsOrderedMatch = needsOrderedMatch;
 	}
 	
 	/**
@@ -63,9 +73,10 @@ public class PrimaryKey {
 	 * @return a match of all columns of <code>primaryKey</code>
 	 */
 	public Map<Column, Column> match(PrimaryKey primaryKey) {
-		if (Configuration.getInstance().getDoMinimizeUPK()) {
+		Map<Column, Column> match = new HashMap<Column, Column>();
+		boolean minimize = Configuration.getInstance().getDoMinimizeUPK() || !primaryKey.needsOrderedMatch;
+		if (minimize) {
 			Set<Integer> assignedUPKColumns = new HashSet<Integer>();
-			Map<Column, Column> match = new HashMap<Column, Column>();
 			for (Column column: getColumns()) {
 				for (int i = 0; i < primaryKey.getColumns().size(); ++i) {
 					if (assignedUPKColumns.contains(i)) {
@@ -82,9 +93,7 @@ public class PrimaryKey {
 					}
 				}
 			}
-			return match;
 		} else {
-			Map<Column, Column> match = new HashMap<Column, Column>();
 			int i = 0;
 			for (Column column: getColumns()) {
 				if (i >= primaryKey.getColumns().size()) {
@@ -99,8 +108,16 @@ public class PrimaryKey {
 					}
 				}
 			}
-			return match;
 		}
+		
+		if (match.size() != primaryKey.columns.size()) {
+			LogUtil.warn(new IllegalStateException("incomplete PK-UPK-match (" + minimize + ")\n"
+					+ "PK: " + primaryKey.toSQL(null) + "\n"
+					+ "UPK: " + toSQL(null) + "\n"
+					+ "Match: " + match + "\n"));
+		}
+		
+		return match;
 	}
 
 	public static boolean  isAssignable(Column uPKColumn, Column entityColumn) {

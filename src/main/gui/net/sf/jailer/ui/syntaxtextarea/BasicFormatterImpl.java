@@ -26,8 +26,12 @@ package net.sf.jailer.ui.syntaxtextarea;
 
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.Set;
 import java.util.StringTokenizer;
+
+import com.github.vertical_blank.sqlformatter.SqlFormatter;
+import com.github.vertical_blank.sqlformatter.core.FormatConfig;
 
 /**
  * Performs formatting of basic SQL statements (DML + query).
@@ -85,14 +89,33 @@ public class BasicFormatterImpl {
 
 	static final String indentString = "     ";
 	static final String initial = "\n     ";
-
-	public String format(String source) {
-		return format0(source)
+	
+	public String format(String sql) {
+		try {
+			String source = sql;
+			if (source.contains("\f")) {
+				String marker;
+				String markerRE;
+				for (int i = 0; ; ++i) {
+					marker = "(alpha" + i + "omega)";
+					markerRE = "\\(\\s*alpha" + i + "omega\\s*\\)";
+					if (!source.contains(marker)) {
+						break;
+					}
+				}
+				source = source.replace("\f", marker);
+				source = SqlFormatter.format(source, FormatConfig.builder().indent(indentString).build()).trim();
+				return source.replaceAll(markerRE, "\f");
+			}
+			return SqlFormatter.format(source, FormatConfig.builder().indent(indentString).build()).trim();
+		} catch (Exception e) {
+			return format0(sql)
 				.replaceAll("(?is)\\)\\s+or\\s+\\(", ") or (")
 				.replaceAll("(?is)\\b(insert)\\n\\s*(into)\\b", "$1 $2")
 				.replaceAll("(?is)\\b(delete)\\n\\s*(from)\\b", "$1 $2")
 				.replaceAll("(?is)\\b(select)\\n\\s+(\\*)", "$1 $2")
-				.replaceAll("(?is)\\b(select)(\\n\\s+) (distinct)\\b", "$1 $3$2"); 
+				.replaceAll("(?is)\\b(select)(\\n\\s+) (distinct)\\b", "$1 $3$2");
+		}
 	}
 
 	private String format0(String source) {
@@ -183,7 +206,7 @@ public class BasicFormatterImpl {
 					token = nextToken;
 				}
 				nextToken = null;
-				lcToken = token.toLowerCase();
+				lcToken = token.toLowerCase(Locale.ENGLISH);
 
 				if ("-".equals(token) && tokens.hasMoreTokens()) {
 					nextToken = tokens.nextToken();

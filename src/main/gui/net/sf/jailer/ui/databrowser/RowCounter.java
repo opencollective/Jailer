@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import net.sf.jailer.database.InlineViewStyle;
@@ -42,7 +43,7 @@ public class RowCounter {
 	private final List<Row> theRows;
 	private final RowIdSupport rowIdSupport;
 	private final int TIMEOUT = 6;
-	
+
 	public static class RowCount {
 		public final long count;
 		public final boolean isExact;
@@ -52,7 +53,7 @@ public class RowCounter {
 			this.isExact = isExact;
 		}
 	}
-	
+
 	public RowCounter(Table table, Association association, List<Row> theRows, Session session, RowIdSupport rowIdSupport) {
 		this.table = table;
 		this.association = association;
@@ -60,10 +61,10 @@ public class RowCounter {
 		this.session = session;
 		this.rowIdSupport = rowIdSupport;
 	}
-	
+
 	/**
 	 * Counts rows from {@link #table}.
-	 * 
+	 *
 	 * @param context
 	 *            cancellation context
 	 * @param limit
@@ -75,7 +76,7 @@ public class RowCounter {
 		pRows = new ArrayList<Row>(pRows);
 		Map<String, Row> rowSet = new HashMap<String, Row>();
 		long maxTime = System.currentTimeMillis() + 1000 * TIMEOUT;
-		
+
 		if (association != null && rowIdSupport.getPrimaryKey(association.source).getColumns().isEmpty()) {
 			try {
 				return loadRowBlocks(andCond, context, limit, selectDistinct, pRows, rowSet, 1, maxTime, null);
@@ -124,7 +125,7 @@ public class RowCounter {
 				Session._log.warn("failed, try another blocking-size (" +  e.getMessage() + ")");
 			}
 		}
-		
+
 		try {
 			return loadRowBlocks(andCond, context, limit, selectDistinct, pRows, rowSet, 1, maxTime, null);
 		} catch (Throwable e) { // embedded DBMS may throw non-SQLException
@@ -143,11 +144,11 @@ public class RowCounter {
 		for (Row pRow : pRows) {
 			if (currentBlock.size() >= NUM_PARENTS) {
 				currentBlock = new ArrayList<Row>();
-				parentBlocks.add(currentBlock);		
+				parentBlocks.add(currentBlock);
 			}
 			currentBlock.add(pRow);
 		}
-		
+
 		long rc = 0;
 		boolean isExact = true;
 
@@ -160,11 +161,11 @@ public class RowCounter {
 			List<Row> pRowBlock = pRowBlockI;
 			Map<String, List<Row>> newBlockRows = new HashMap<String, List<Row>>();
 			boolean loaded = false;
-			
+
 			if (pRowBlock.size() == 1 && pRowBlock.get(0) == null) {
 				pRowBlock = null;
 			}
-			
+
 			long brc = 0;
 			if (session.dbms.getSqlLimitSuffix() != null) {
 				try {
@@ -223,41 +224,31 @@ public class RowCounter {
 
 	/**
 	 * count rows from {@link #table}.
-	 * 
+	 *
 	 * @param rows
 	 *            to put the rows into
 	 * @param context
 	 *            cancellation context
-	 * @param selectDistinct 
-	 * @param inlineViewStyle 
+	 * @param selectDistinct
+	 * @param inlineViewStyle
 	 */
 	public long countRows(String andCond, final List<Row> parentRows, final Map<String, List<Row>> rows, Object context, int limit, boolean useOLAPLimitation,
 			String sqlLimitSuffix, boolean selectDistinct, long maxTime, InlineViewStyle inlineViewStyle) throws SQLException {
-		final Quoting quoting = new Quoting(session);
+		final Quoting quoting = Quoting.getQuoting(session);
 		String sql = "Select "; // + (selectDistinct? "distinct " : "");
 		if (association != null) {
 			sql += "distinct ";
 		}
-		
+
 		{
 			String olapPrefix = "Select 1";
 			String olapSuffix = ") S Where S." + ROWNUMBERALIAS + " <= " + limit;
 			boolean limitSuffixInSelectClause = sqlLimitSuffix != null &&
-					(sqlLimitSuffix.toLowerCase().startsWith("top ") || sqlLimitSuffix.toLowerCase().startsWith("first "));
+					(sqlLimitSuffix.toLowerCase(Locale.ENGLISH).startsWith("top ") || sqlLimitSuffix.toLowerCase(Locale.ENGLISH).startsWith("first "));
 			if (sqlLimitSuffix != null && limitSuffixInSelectClause) {
 				sql += (sqlLimitSuffix.replace("%s", Integer.toString(limit))) + " ";
 			}
-//			boolean f = true;
-//			int i = 0;
-			
-//			for (Column column : association.destination.getColumns()) {
-//				String name = column.name;
-//				sql += (!f ? ", " : "") + "A." + quoting.quote(name) + " AS A" + i;
-//				olapPrefix += (!f ? ", " : "") + "S.A" + i;
-//				++i;
-//				f = false;
-//			}
-			
+
 			if (association != null) {
 				boolean f = true;
 				for (Column pkColumn: rowIdSupport.getPrimaryKey(association.destination).getColumns()) {
@@ -270,7 +261,7 @@ public class RowCounter {
 			} else {
 				sql += "1";
 			}
-			
+
 			if (useOLAPLimitation) {
 				sql += ", row_number() over(";
 				sql += "order by -1";
@@ -288,7 +279,7 @@ public class RowCounter {
 					sql += " on " + SqlUtil.reversRestrictionCondition(association.getUnrestrictedJoinCondition());
 				}
 			}
-	
+
 			if (parentRows != null && !parentRows.isEmpty()) {
 				if (parentRows.size() == 1) {
 					sql += " Where (" + parentRows.get(0).rowId + ")";
@@ -350,12 +341,12 @@ public class RowCounter {
 			int timeout = (int) Math.max(1, (maxTime - System.currentTimeMillis()) / 1000);
 
 			session.executeQuery(sql, new Session.ResultSetReader() {
-	
+
 				@Override
 				public void readCurrentRow(ResultSet resultSet) throws SQLException {
 					rc[0] = resultSet.getLong(1);
 				}
-	
+
 				@Override
 				public void close() {
 				}
@@ -366,7 +357,7 @@ public class RowCounter {
 
 	/**
 	 * Gets qualified table name.
-	 * 
+	 *
 	 * @param t the table
 	 * @return qualified name of t
 	 */

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ import java.awt.event.WindowFocusListener;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.swing.AbstractAction;
@@ -52,7 +51,6 @@ import org.fife.rsta.ui.EscapableDialog;
 import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
-import net.sf.jailer.ui.ParameterSelector;
 import net.sf.jailer.ui.UIUtil;
 import net.sf.jailer.ui.scrollmenu.JScrollPopupMenu;
 import net.sf.jailer.ui.syntaxtextarea.BasicFormatterImpl;
@@ -72,7 +70,6 @@ public abstract class DBConditionEditor extends EscapableDialog {
 
 	private boolean ok;
 	private boolean escaped;
-	private ParameterSelector parameterSelector;
 	private DataModelBasedSQLCompletionProvider provider;
 
 	/** Creates new form ConditionEditor */
@@ -107,7 +104,7 @@ public abstract class DBConditionEditor extends EscapableDialog {
 				if (ok && initialCondition.equals(editorPane.getText())) {
 					ok = false;
 				}
-				consume(ok? UIUtil.removesuperfluousSpaces(removeSingleLineComments(editorPane.getText()).replaceAll("\\n(\\r?) *", " ").replace('\n', ' ').replace('\r', ' ')) : null);
+				consume(ok? UIUtil.toSingleLineSQL(editorPane.getText().replaceFirst("(?is)^\\s*where\\b\\s*", "")) : null);
 			}
 		});
 		
@@ -403,9 +400,6 @@ public abstract class DBConditionEditor extends EscapableDialog {
 
 		editorPane.setAnimateBracketMatching(false);
 		
-		if (parameterSelector != null) {
-			parameterSelector.updateParameters();
-		}
 		if (provider != null) {
 			provider.removeAliases();
 			if (table1 != null) {
@@ -423,46 +417,6 @@ public abstract class DBConditionEditor extends EscapableDialog {
 		});
 		initialCondition = condition;
 		setVisible(true);
-	}
-
-	/**
-	 * Removes single line comments.
-	 * 
-	 * @param statement
-	 *            the statement
-	 * 
-	 * @return statement the statement without comments and literals
-	 */
-	private String removeSingleLineComments(String statement) {
-		Pattern pattern = Pattern.compile("('(?:[^']*'))|(/\\*.*?\\*/)|(\\-\\-.*?(?=\n|$))", Pattern.DOTALL);
-		Matcher matcher = pattern.matcher(statement);
-		boolean result = matcher.find();
-		StringBuffer sb = new StringBuffer();
-		if (result) {
-			do {
-				if (matcher.group(3) == null) {
-					matcher.appendReplacement(sb, "$0");
-					result = matcher.find();
-					continue;
-				}
-				int l = matcher.group(0).length();
-				matcher.appendReplacement(sb, "");
-				if (matcher.group(1) != null) {
-					l -= 2;
-					sb.append("'");
-				}
-				while (l > 0) {
-					--l;
-					sb.append(' ');
-				}
-				if (matcher.group(1) != null) {
-					sb.append("'");
-				}
-				result = matcher.find();
-			} while (result);
-		}
-		matcher.appendTail(sb);
-		return sb.toString();
 	}
 
 	public void setLocationAndFit(Point pos, int maxXW) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -348,7 +348,7 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
         okButton = new javax.swing.JButton();
         jPanel3 = new javax.swing.JPanel();
         jinfoLabe = new javax.swing.JLabel();
-        tablesComboBox = new JComboBox<>();
+        tablesComboBox = new JComboBox2<>();
         dummyLabel = new javax.swing.JLabel();
 
         setLayout(new java.awt.GridBagLayout());
@@ -494,7 +494,7 @@ public class ColumnOrderEditor extends javax.swing.JPanel {
     private javax.swing.JSeparator jSeparator1;
     private javax.swing.JLabel jinfoLabe;
     private javax.swing.JButton okButton;
-    private JComboBox<String> tablesComboBox;
+    private JComboBox2<String> tablesComboBox;
     // End of variables declaration//GEN-END:variables
 
     public void adjustTableColumnsWidth() {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import java.awt.Component;
 import java.awt.Dialog;
 import java.awt.Dimension;
 import java.awt.Toolkit;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.File;
@@ -39,7 +41,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Function;
 
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JTable;
@@ -272,6 +276,22 @@ public class DataModelEditor extends javax.swing.JDialog {
 		filterHeader.setMaxVisibleRows(20);
 		filterHeader.setRowHeightDelta(2);
 		
+		Function<JButton, MouseAdapter> editOnDoubleKlickListener = 
+				button -> 
+					new MouseAdapter() {
+						@Override
+						public void mouseClicked(MouseEvent e) {
+							if (e.getClickCount() > 1) {
+								UIUtil.invokeLater(() -> {
+									button.doClick();
+								});
+							}
+						}
+					};
+
+		tablesTable.addMouseListener(editOnDoubleKlickListener.apply(editTable));
+		associationsTable.addMouseListener(editOnDoubleKlickListener.apply(editAssociation));
+
 		String modelpath = executionContext.getQualifiedDatamodelFolder();
 		try {
 			modelpath = new File(modelpath).getAbsolutePath();
@@ -302,10 +322,7 @@ public class DataModelEditor extends javax.swing.JDialog {
 				markDirty();
 			}
 		});
-		
-		UIUtil.wireComponentWithButton(tablesTable, editTable);
-		UIUtil.wireComponentWithButton(associationsTable, editAssociation);
-		
+
 		setLocation(100, 32);
 		Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
 		if (screenSize == null || screenSize.width < 1200) {
@@ -318,7 +335,7 @@ public class DataModelEditor extends javax.swing.JDialog {
 		if (merge && modelFinderColumnFile.exists()) {
 			for (CsvFile.Line l: new CsvFile(modelFinderColumnFile).getLines()) {
 				CsvFile.Line ol = columns.get(l.cells.get(0));
-				if (ol == null || !ol.cells.equals(l.cells)) {
+				if (ol == null || !ol.toString().equals(l.toString())) {
 					modifiedColumnTables.add(l.cells.get(0));
 					markDirty();
 				}
@@ -519,7 +536,7 @@ public class DataModelEditor extends javax.swing.JDialog {
 			width = Math.max(width, comp.getPreferredSize().width);
 
 			int line = 0;
-			for (; line < table.getRowCount(); ++line) {
+			for (; line < table.getRowCount() && line < 1000; ++line) {
 				comp = table.getCellRenderer(line, i).getTableCellRendererComponent(table, dtm.getValueAt(line, i), false, false, line, i);
 				width = Math.max(width, comp.getPreferredSize().width);
 			}
@@ -567,11 +584,12 @@ public class DataModelEditor extends javax.swing.JDialog {
 	 * @param lines the list to sort
 	 */
 	private void sortLineList(List<CsvFile.Line> list, final boolean sortTables) {
+		Set<CsvFile.Line> linesFromModelFinderAsSet = new HashSet<CsvFile.Line>(linesFromModelFinder);
 		Collections.sort(list, new Comparator<CsvFile.Line> () {
 			@Override
 			public int compare(CsvFile.Line o1, CsvFile.Line o2) {
-				int c1 = linesFromModelFinder.contains(o1)? 0 : 1;
-				int c2 = linesFromModelFinder.contains(o2)? 0 : 1;
+				int c1 = linesFromModelFinderAsSet.contains(o1)? 0 : 1;
+				int c2 = linesFromModelFinderAsSet.contains(o2)? 0 : 1;
 				if (c1 != c2) {
 					return c1 - c2;
 				}
@@ -582,7 +600,7 @@ public class DataModelEditor extends javax.swing.JDialog {
 					if (pk1.length() > 0 && pk2.length() == 0) return 1;
 				}
 				for (int i = 0; i < 3; ++i) {
-					int r = o1.cells.get(i).compareTo(o2.cells.get(i));
+					int r = o1.cells.get(i).compareToIgnoreCase(o2.cells.get(i));
 					if (r != 0) {
 						return r;
 					}
@@ -1226,7 +1244,7 @@ public class DataModelEditor extends javax.swing.JDialog {
 				// ignore
 			}
 		}
-	};
+	}
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTable associationsTable;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 import javax.swing.JComponent;
 
@@ -63,8 +65,10 @@ public class MetaDataBasedSQLCompletionProvider extends SQLCompletionProvider<Me
 	@Override
 	protected MDTable findTable(MDSchema schema, String name) {
 		if (!schema.isLoaded()) {
-			schema.loadTables(true, null, null);
-    		return null;
+			getTables(schema);
+		}
+		if (!schema.isLoaded()) {
+			return null;
     	}
 		return schema.find(name);
 	}
@@ -74,11 +78,26 @@ public class MetaDataBasedSQLCompletionProvider extends SQLCompletionProvider<Me
 		return table.getName();
 	}
 
+	private Map<MDSchema, MDSchema> triedToLoad = new WeakHashMap<MDSchema, MDSchema>();
+	
 	@Override
 	protected List<MDTable> getTables(MDSchema schema) {
 		if (!schema.isLoaded()) {
-			schema.loadTables(true, null, null);
-    		return Collections.emptyList();
+			if (!triedToLoad.containsKey(schema)) {
+				triedToLoad.put(schema, schema);
+				schema.loadTables(true, null, null, null);
+				for (int i = 0; i < 10; ++i) {
+					if (schema.isLoaded()) {
+						return schema.getTables();
+					}
+					try {
+						Thread.sleep(100);
+					} catch (InterruptedException e) {
+						// ignore
+					}
+				}
+			}
+			return Collections.emptyList();
     	}
 		return schema.getTables();
 	}
@@ -119,6 +138,11 @@ public class MetaDataBasedSQLCompletionProvider extends SQLCompletionProvider<Me
 			}
 		}
 		return result;
+	}
+
+	@Override
+	protected boolean isInitialized() {
+		return metaDataSource.isInitialized() && (metaDataSource.getDefaultSchema() == null || metaDataSource.getDefaultSchema().isLoaded());
 	}
 
 }

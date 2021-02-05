@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,9 +58,18 @@ public class MemorizedResultSet implements ResultSet {
 		this.rowList = rowList;
 	}
 
+	public MemorizedResultSet(List<Object[]> rowList, int numCol, String[] names, int[] types, String[] typeNames) {
+		this.rowList = rowList;
+		this.resultSetMetaData = new MemorizedResultSetMetaData(numCol, names, types, typeNames);
+	}
+
 	public MemorizedResultSet(List<Object[]> rowList, int numCol, String[] names, int[] types) {
 		this.rowList = rowList;
-		this.resultSetMetaData = new MemorizedResultSetMetaData(numCol, names, types);
+		String[] typeNames = new String[types.length];
+		for (int i = 0; i < typeNames.length; ++i) {
+			typeNames[i] = "";
+		}
+		this.resultSetMetaData = new MemorizedResultSetMetaData(numCol, names, types, typeNames);
 	}
 
 	public MemorizedResultSet(List<Object[]> rowList, MemorizedResultSetMetaData resultSetMetaData) {
@@ -71,7 +80,7 @@ public class MemorizedResultSet implements ResultSet {
 	public void reset() {
 		index = -1;
 	}
-	
+
 	public int getSize() {
 		return rowList.size();
 	}
@@ -92,19 +101,22 @@ public class MemorizedResultSet implements ResultSet {
 		prepareHook(rmd);
 		CellContentConverter cellContentConverter = new CellContentConverter(rmd, session, session.dbms);
 		final int numCol = projection == null? rmd.getColumnCount() : projection.length;
-		
+
 		final String[] names = new String[numCol];
 		final int[] types = new int[numCol];
+		final String[] typeNames = new String[numCol];
 		for (int i = 1; i <= numCol; ++i) {
 			names[i - 1] = columnNames == null? rmd.getColumnName(projection == null? i : projection[i - 1]) : columnNames[i - 1];
 			types[i - 1] = rmd.getColumnType(projection == null? i : projection[i - 1]);
+			typeNames[i - 1] = rmd.getColumnTypeName(projection == null? i : projection[i - 1]);
 		}
 
 		while (resultSet.next()) {
 			readRowHook(resultSet);
 			Object[] row = new Object[numCol];
 			for (int i = 1; i <= numCol; ++i) {
-				row[i - 1] = convertCellContent(cellContentConverter.getObject(resultSet, projection == null? i : projection[i - 1]));
+				final int finalI = i;
+				row[i - 1] = convertCellContent(() -> cellContentConverter.getObject(resultSet, projection == null? finalI : projection[finalI - 1]));
 			}
 			rowList.add(row);
 			if (limit != null && rowList.size() > limit) {
@@ -114,7 +126,7 @@ public class MemorizedResultSet implements ResultSet {
 				CancellationHandler.checkForCancellation(cancellationContext);
 			}
 		}
-		resultSetMetaData = new MemorizedResultSetMetaData(numCol, names, types);
+		resultSetMetaData = new MemorizedResultSetMetaData(numCol, names, types, typeNames);
 	}
 
 	protected void prepareHook(ResultSetMetaData rmd) throws SQLException {
@@ -123,8 +135,13 @@ public class MemorizedResultSet implements ResultSet {
 	protected void readRowHook(ResultSet resultSet) throws SQLException {
 	}
 
-	protected Object convertCellContent(Object object) {
-		return object;
+	@FunctionalInterface
+	public interface ContentSupplier {
+		Object get() throws SQLException;
+	}
+
+	protected Object convertCellContent(ContentSupplier objectSupplier) throws SQLException {
+		return objectSupplier.get();
 	}
 
 	public void removeNullRows(int columnIndex) {
@@ -137,7 +154,7 @@ public class MemorizedResultSet implements ResultSet {
 			}
 		}
 	}
-	
+
 	@Override
 	public Object getObject(int columnIndex) throws SQLException {
 		Object[] row = rowList.get(index);
@@ -1299,11 +1316,13 @@ public class MemorizedResultSet implements ResultSet {
 		private final int numCol;
 		private final String[] names;
 		public final int[] types;
+		public final String[] typeNames;
 
-		public MemorizedResultSetMetaData(int numCol, String[] names, int[] types) {
+		public MemorizedResultSetMetaData(int numCol, String[] names, int[] types, String[] typeNames) {
 			this.numCol = numCol;
 			this.names = names;
 			this.types = types;
+			this.typeNames = typeNames;
 		}
 
 		@Override

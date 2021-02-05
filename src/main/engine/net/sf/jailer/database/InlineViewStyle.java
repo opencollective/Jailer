@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ public enum InlineViewStyle {
 			return sb.toString();
 		}
 	},
-	DB2("(values (1, '2', 3), (4, '5', 6)) %s(A, B, C)") {
+	Db2("(values (1, '2', 3), (4, '5', 6)) %s(A, B, C)") {
 		@Override
 		public String head(String[] columnNames) throws SQLException {
 			return "(values ";
@@ -291,6 +291,39 @@ public enum InlineViewStyle {
 		@Override
 		public String terminator(String name, String[] columnNames) throws SQLException {
 			StringBuilder sb = new StringBuilder(" from sysmaster:\"informix\".sysdual) " + name);
+			return sb.toString();
+		}
+	},
+	FIREBIRD("(Select 1 A, '2' B, 3 C from RDB$DATABASE Union all "
+			+ "Select 4, '5', 6 from RDB$DATABASE) %s") {
+		@Override
+		public String head(String[] columnNames) throws SQLException {
+			return "(Select ";
+		}
+
+		@Override
+		public String item(String[] values, String[] columnNames, int rowNumber) throws SQLException {
+			StringBuilder sb = new StringBuilder();
+			for (int i = 1; i <= columnNames.length; ++i) {
+				if (i > 1) {
+					sb.append(", ");
+				}
+				sb.append(values[i - 1]);
+				if (rowNumber == 0) {
+					sb.append(" " + columnNames[i - 1]);
+				}
+			}
+			return sb.toString();
+		}
+
+		@Override
+		public String separator() throws SQLException {
+			return " from RDB$DATABASE Union all Select ";
+		}
+
+		@Override
+		public String terminator(String name, String[] columnNames) throws SQLException {
+			StringBuilder sb = new StringBuilder(" from RDB$DATABASE) " + name);
 			return sb.toString();
 		}
 	};

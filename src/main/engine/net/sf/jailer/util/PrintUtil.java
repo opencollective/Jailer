@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import net.sf.jailer.configuration.Configuration;
 import net.sf.jailer.datamodel.Table;
 
 /**
@@ -96,7 +97,12 @@ public class PrintUtil {
 	public String loadResource(String name) throws FileNotFoundException, IOException {
 		StringBuffer sb;
 		sb = new StringBuffer();
-		File newFile = new File(name);
+		File newFile;
+		if (Configuration.applicationBase == null) {
+			newFile = new File(name);
+		} else {
+			newFile = new File(Configuration.applicationBase, name);
+		}
 		BufferedReader reader;
 		if (newFile.exists()) {
 			reader = new BufferedReader(new FileReader(newFile));
@@ -264,5 +270,5 @@ public class PrintUtil {
 		long h = et / 36000;
 		return (h<10? "0" : "") + h + ":" + (min<10? "0" : "") + min + ":" + (sec<10? "0" : "") + sec + "." + hs;
 	}
-	
+
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ public class MemorizedResultSetTransformer {
 
     public interface AggregateFunction {
         Object eval(List<Object[]> group, int columnIndex);
-    };
+    }
 
     public static class ListAggregation implements AggregateFunction {
         @Override
@@ -45,7 +45,7 @@ public class MemorizedResultSetTransformer {
         	}
         	return sb.toString();
         }
-    };
+    }
 
     /**
      * Definition of a column transformation.
@@ -57,7 +57,7 @@ public class MemorizedResultSetTransformer {
             this.columnIndex = columnIndex;
             this.aggregateFunction = aggregateFunction;
         }
-    };
+    }
 
     /**
      * Transforms (sort/select/group) Memorized Result sets.

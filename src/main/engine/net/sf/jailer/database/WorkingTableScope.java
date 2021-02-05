@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,29 +17,29 @@ package net.sf.jailer.database;
 
 /**
  * Working-tables scopes.
- * 
+ *
  * @author Ralf Wisser
  */
 public enum WorkingTableScope {
-	
+
 	/**
 	 * Create the working-tables (JAILER_*) in the source database.
 	 */
 	GLOBAL,
-	
+
 	/**
 	 * Create the working-tables (JAILER_*) as temporary tables in the source database.
 	 */
 	SESSION_LOCAL,
-	
+
 	/**
-	 * Not supported.
+	 * Not supported. Do not use.
 	 */
 	TRANSACTION_LOCAL, // not supported
-	
+
 	/**
 	 * Create a local database (H2) for the working-tables (JAILER_*).
 	 */
 	LOCAL_DATABASE
-	
+
 }

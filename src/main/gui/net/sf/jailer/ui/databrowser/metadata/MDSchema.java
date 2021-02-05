@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@ public class MDSchema extends MDObject {
 					}
 				}
 			}
-		});
+		}, "Metadata-LoadColumns");
 		thread.setDaemon(true);
 		thread.start();
 
@@ -104,7 +104,7 @@ public class MDSchema extends MDObject {
 					}
 				}
 			}
-		});
+		}, "Metadata-LoadTables");
 		thread.setDaemon(true);
 		thread.start();
 
@@ -122,7 +122,7 @@ public class MDSchema extends MDObject {
 						}
 					}
 				}
-			});
+			}, "Metadata-LoadOther-" + (i + 1));
 			thread.setDaemon(true);
 			thread.start();
 		}
@@ -134,7 +134,7 @@ public class MDSchema extends MDObject {
 	 * @return tables of schema
 	 */
 	public List<MDTable> getTables() {
-		return getTables(true, null);
+		return getTables(true, null, null);
 	}
 
 	private Object getTablesLock = new String("getTablesLock");
@@ -145,16 +145,11 @@ public class MDSchema extends MDObject {
 	 * 
 	 * @return tables of schema
 	 */
-	public List<MDTable> getTables(boolean loadTableColumns, Runnable afterLoadAction) {
+	public List<MDTable> getTables(boolean loadTableColumns, Runnable afterLoadAction, final Runnable afterLoadERCAction) {
 		synchronized (getTablesLock) {
 			if (tables == null) {
 				try {
 					tables = new ArrayList<MDTable>();
-					Map<String, Long> estimatedRowCounts = readEstimatedRowCounts();
-					if (estimatedRowCounts.size() > 10000) {
-						// rendering many ERCs is too expensive
-						estimatedRowCounts.clear();
-					}
 					MetaDataSource metaDataSource = getMetaDataSource();
 					synchronized (metaDataSource.getSession().getMetaData()) {
 						ResultSet rs = metaDataSource.readTables(getName());
@@ -163,8 +158,7 @@ public class MDSchema extends MDObject {
 							String tableName = metaDataSource.getQuoting().quote(rs.getString(3));
 							final MDTable table = new MDTable(tableName, this, "VIEW".equalsIgnoreCase(rs.getString(4)),
 									"SYNONYM".equalsIgnoreCase(rs.getString(4))
-								 || "ALIAS".equalsIgnoreCase(rs.getString(4)), 
-								 	estimatedRowCounts.get(rs.getString(3)));
+								 || "ALIAS".equalsIgnoreCase(rs.getString(4)));
 							tables.add(table);
 							if (loadTableColumns) {
 								loadJobs.put(tableName, new Runnable() {
@@ -182,6 +176,7 @@ public class MDSchema extends MDObject {
 							}
 						}
 						rs.close();
+						
 						for (Runnable loadJob : loadJobs.values()) {
 							loadTableColumnsQueue.add(loadJob);
 						}
@@ -192,16 +187,57 @@ public class MDSchema extends MDObject {
 					Collections.sort(tables, new Comparator<MDTable>() {
 						@Override
 						public int compare(MDTable o1, MDTable o2) {
-							return o1.getName().compareTo(o2.getName());
+							return o1.getName().compareToIgnoreCase(o2.getName());
 						}
 					});
 				} catch (SQLException e) {
-					logger.info("error", e);
+					if (!getMetaDataSource().getSession().isDown()) {
+						logger.info("error", e);
+					}
 				} finally {
 					loaded.set(true);
 				}
 			}
+			if (tables != null && afterLoadERCAction != null) {
+				loadMetaDataQueues[1].add(new Runnable() {
+					@Override
+					public void run() {
+						loadEstimatedRowCounts(afterLoadERCAction);
+					}
+				});
+			}
 			return tables;
+		}
+	}
+
+	private Map<String, Long> estimatedRowCounts;
+	private Object estimatedRowCountsLock = new String("estimatedRowCounts");
+
+	private void loadEstimatedRowCounts(final Runnable afterLoadAction) {
+		synchronized (estimatedRowCountsLock) {
+			if (estimatedRowCounts == null) {
+				estimatedRowCounts = readEstimatedRowCounts();
+				
+				if (estimatedRowCounts.size() > 10000) {
+					// rendering many ERCs is too expensive
+					estimatedRowCounts.clear();
+				}
+			}
+			UIUtil.invokeLater(new Runnable() {
+				@Override
+				public void run() {
+					MetaDataSource metaDataSource = getMetaDataSource();
+					for (MDTable table: tables) {
+						table.setEstimatedRowCount(
+								estimatedRowCounts.get(
+										metaDataSource.getQuoting().unquote(
+												table.getName())));
+					}
+					if (afterLoadAction != null) {
+						afterLoadAction.run();
+					}
+				}
+			});
 		}
 	}
 
@@ -211,7 +247,7 @@ public class MDSchema extends MDObject {
 		String query = getMetaDataSource().getSession().dbms.getEstimatedRowCountQuery();
 		if (query != null) {
 			try {
-				getMetaDataSource().getSession().executeQuery(String.format(query, getUnquotedName()), new AbstractResultSetReader() {
+				getMetaDataSource().getSession().executeQuery(String.format(Locale.ENGLISH, query, getUnquotedName()), new AbstractResultSetReader() {
 					@Override
 					public void readCurrentRow(ResultSet resultSet) throws SQLException {
 						String tableName = resultSet.getString(1);
@@ -239,13 +275,15 @@ public class MDSchema extends MDObject {
 	/**
 	 * Asynchronously loads the tables.
 	 */
-	public void loadTables(final boolean loadTableColumns, final Runnable afterLoadAction, final Runnable afterAvailableAction) {
+	public void loadTables(final boolean loadTableColumns, final Runnable afterLoadAction, final Runnable afterAvailableAction, final Runnable afterLoadESTAction) {
 		loadTablesQueue.add(new Runnable() {
 			@Override
 			public void run() {
-				getTables(loadTableColumns, afterLoadAction);
-				if (afterAvailableAction != null) {
-					afterAvailableAction.run();
+				if (!getMetaDataSource().getSession().isDown()) {
+					getTables(loadTableColumns, afterLoadAction, afterLoadESTAction);
+					if (afterAvailableAction != null) {
+						afterAvailableAction.run();
+					}
 				}
 			}
 		});
@@ -317,7 +355,7 @@ public class MDSchema extends MDObject {
 						schema = Quoting.staticUnquote(schema);
 					}
 					String query = getMetaDataSource().getSession().dbms.getConstraintsQuery();
-					ResultSet rs = cStmt.executeQuery(String.format(query, schema));
+					ResultSet rs = cStmt.executeQuery(String.format(Locale.ENGLISH, query, schema));
 					MemorizedResultSet result = new MemorizedResultSet(rs, null, getMetaDataSource().getSession(), schema);
 					rs.close();
 					List<Object[]> rows = new ArrayList<Object[]>();
@@ -370,11 +408,11 @@ public class MDSchema extends MDObject {
 	public static UIUtil.IconWithText getConstraintTypeIcon(final String type) {
 		ImageIcon icon = null;
 		if (type != null) {
-			String iconURL = "constraint_" + (type.replaceAll(" +", "").toLowerCase()) + ".png";
+			String iconURL = "constraint_" + (type.replaceAll(" +", "").toLowerCase(Locale.ENGLISH)) + ".png";
 			icon = constraintTypeIcons.get(iconURL);
 			if (icon == null) {
 				try {
-		            icon = new ImageIcon(MDSchema.class.getResource("/net/sf/jailer/ui/resource/" + iconURL));
+		            icon = UIUtil.readImage("/" + iconURL);
 		        } catch (Exception e) {
 		        }
 			}

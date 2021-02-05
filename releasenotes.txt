@@ -1,3 +1,190 @@
+10.3.3
+  - The wording of the dialog for analyzing a scheme has been made more understandable.
+  - Sorting columns in the result of a query in SQL Console did not work
+    if a column did not have an explicit name. This bug was fixed.
+  - The error message of the primary key checker tool is now more readable.
+  - Feature request 67 "Export as imagemap", https://sourceforge.net/p/jailer/feature-requests/67/
+
+10.3.2
+  - The SQL formatting algorithm has been improved.
+  - Increased responsiveness of the SQL console.
+
+10.3.1
+  - The data browser has been revised and improved.
+    In particular, an overview panel for the desktop was developed,
+    which simplifies orientation in complex data views.
+
+10.2.7
+  - Workaround for "Parser hangs in some queries #1013"
+  - Internal refactoring measures
+
+10.2.6
+  - If a foreign key is nullable, rows can now be exported with no parents without violating the integrity
+    by setting the foreign key to null instead. In the same way parents can be deleted without their children.
+  - Support of CLOB/BLOB in MS SQL
+
+10.2.4
+  - When working with PostgreSQL, you can use the "ctid" pseudo columns instead of primary keys
+    for row identification. See https://github.com/Wisser/Jailer/issues/36
+  - Under rare circumstances SQL statements were generated that could not be processed by Sybase database systems.
+    This has been corrected.
+  - The performance of the working table scope "local database" was improved. Especially with embedded usage (API).
+  - If the subsetter is used via API, access to the working tables is synchronized
+    so that different extraction models can be used concurrently.
+
+10.2.2
+  - Error "Streaming result set is still active" when a limit is defined on the subject was fixed (MySQL)
+
+10.2.1
+  - The response time in case of errors has been improved by immediately terminating all running SQL statements.
+
+10.2
+  - Support for the MS SQL data type "hierarchyid".
+  - Severe error in log file creation was fixed.
+
+10.1.2
+  - Automatic download of JDBC drivers.
+  - Workaround for bug "JDK-8215200 : IllegalArgumentException in sun.lwawt.macosx.CPlatformWindow"
+      https://github.com/AdoptOpenJDK/openjdk-jdk11/issues/10
+      https://bugs.java.com/bugdatabase/view_bug.do?bug_id=8215200
+      https://bugs.openjdk.java.net/browse/JDK-8215200
+
+10.0
+  - Java 7 support was dropped in favor of reduced development overheads.
+  - Third party libraries and JDBC drivers have been upgraded accordingly.
+
+9.5.6
+  - New CLI tool for printing the closure of subject tables.
+    https://github.com/Wisser/Jailer/issues/34
+  - The command line interface has been cleaned up and simplified.
+  - An error in the HTML rendering of a data model was corrected.
+
+9.5.5
+  - Fix for "Need help understanding delete script"
+    https://sourceforge.net/p/jailer/discussion/700499/thread/b3685a49/
+    (A further release was necessary, as this was not completely corrected at first)
+  - improved CSV-handling
+
+9.5.4
+  - Deactivated dependencies had no effect on topological sorting. This was corrected.
+    https://sourceforge.net/p/jailer/discussion/700499/thread/b3685a49
+  - Fix for "NoClassDefFoundError was not logged, Jailer failed without showing reason #33"
+    https://github.com/Wisser/Jailer/issues/33
+
+9.5.3
+  - Improved Connection Settings Wizard.
+  - Some diagnostic means have been added.
+  - Minor fixes.
+
+9.5.2
+  - Fix for "[Bug] firebird database - No suitable Inline-View Style known #32"
+    https://github.com/Wisser/Jailer/issues/32
+  - Fix for "Delete Reduction is not deleting rows"
+    https://sourceforge.net/p/jailer/discussion/700499/thread/3d16e17980/
+
+9.5.1
+  - Fix for "[jailer:bugs] #43 PostgreSQL: Export of inet and interval"
+    https://sourceforge.net/p/jailer/bugs/43/
+  - Fix for "[jailer:bugs] #44 not a proxy instance if WorkingTableScope.LOCAL_DATABASEand Tomcat jdbc pool"
+    https://sourceforge.net/p/jailer/bugs/44/
+
+9.5
+  - Increased initial responsiveness of the Data Browser.
+  - Extensive internal redesigns since the last major release.
+
+9.4.3
+  - Fixed issue "Error when running sql script" https://sourceforge.net/p/jailer/discussion/700499/thread/90600d12b6
+
+9.4.2
+  - Improved database metadata management.
+
+9.4.1
+  - The new "Degree view" allows quick and easy editing of the associations of tables with the highest connectivity.
+
+9.3.6
+  - "#66 Avoid plain text passwords on the command line"
+    https://sourceforge.net/p/jailer/feature-requests/66/
+  - Minor improvements to GUI of the data browser.
+
+9.3.5
+  - Minor improvements to the GUI of the SQL console.
+  - Increased responsiveness and performance of the SQL Console.
+
+9.3.4
+  - Instant visualization of the contents of the row under the mouse pointer in the data browser.
+
+9.3.3
+  - Fixed: Characters in bookmark names that are not valid in file names caused errors when saving the bookmarks.
+  - Minor improvements to the GUI of the data-browser.
+
+9.3.2
+  - Fixed "Conditions with () have leading and trailing parans removed" https://github.com/Wisser/Jailer/issues/28
+  - Fetching results from MySQL/MariaDB is now based on a cursor. This prevents out-of-memory errors with large amounts of data.
+
+9.3.1
+  - Fixed "Syntax error creating tables in PostgreSQL" https://github.com/Wisser/Jailer/issues/27
+  - Modifications to the connection properties in the "Connection" dialog were sometimes retained after a "cancel".
+  - "About" dialog now also shows system properties.
+
+9.3
+  - The number of rows of a subject table to be exported can now be limited
+    taking into account a possible column order.
+  - Nullable primary key columns could lead to incorrect results under certain circumstances.
+  - In the data browser, the user interface sometimes blocked when the acquisition of database metadata took a long time.
+
+9.2.2
+  - When deleting rows, an IllegalStateException sometimes occurred incorrectly.
+  - Improved performance of deletion script generation.
+  - Progress dialog for exporting is no longer modal.
+
+9.2.1
+  - Support for nullable primary key columns.
+    This simplifies the definition of pseudo-primary keys for tables without keys.
+  - "Limit" parameter as a safeguard for exports. https://github.com/Wisser/Jailer/issues/24
+
+9.1.8
+  - Fixed https://github.com/Wisser/Jailer/issues/22
+  - Updated the SQLite JDBC driver.
+  - A new wizard for JDBC URL settings has been created.
+
+9.1.7
+  - Fixed NullPointerException in Data Browser.
+
+9.1.6
+  - Support for data type datetime2 in MS SQL.
+    https://github.com/Wisser/Jailer/issues/20
+  - The -schemamapping option was not used correctly for the statements of a delete script.
+    https://github.com/Wisser/Jailer/issues/21
+  - Formatting of dates/timestamps during export no longer takes place synchronized.
+    This improves performance when multiple threads are used.
+  - Minor improvements to the "Export Data" dialog.
+
+9.1.4
+  - Deadlock prevention in PostgreSQL.
+  - Support for PostgreSQL type "bpchar".
+
+9.1.3
+  - Improved display of errors in the data browser.
+  - More robustness if primary keys are not specified correctly.
+
+9.1.2
+  - Fetching results from PostgreSQL is now based on a cursor. This prevents out-of-memory errors with large amounts of data.
+
+9.1.1
+  - Performance improvements.
+  - The animation of the data model view in the desktop did not work.
+  - When the DDL is generated for a table, it is also generated for the indexes.
+  - HiDPI display support.
+
+9.1
+  - Hover & See function in the data browser to easily see which row is related to which other rows.
+  - Added configuration information for MariaDB.
+  - Fix for Issue "Gui: NPE after renaming model file (*.jm)"
+    https://github.com/Wisser/Jailer/issues/16
+  - The initial base folder of the data models was incorrect if the installer was used on Windows.
+  - The minimum requirement for the number of available database connections has been reduced to a single one.
+  - Extensive internal redesigns since the last major release.
+
 8.8.8
   - Avoid NPE if there is no default scheme.
   - Import filters did not work correctly when a foreign key column with a filter was exported,

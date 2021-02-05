@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,12 +177,12 @@ public abstract class ConcurrentTaskControl extends javax.swing.JPanel {
 	protected abstract void onCancellation();
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton cancelButton;
-    private javax.swing.JLabel infoLabel;
+    public javax.swing.JButton cancelButton;
+    public javax.swing.JLabel infoLabel;
     // End of variables declaration//GEN-END:variables
 
-    private ConcurrentTaskControl master;
-    
+    public ConcurrentTaskControl master;
+  
 	public static void openInModalDialog(Window windowAncestor, final ConcurrentTaskControl concurrentTaskControl, final Task task, String title) {
 		final JDialog dialog = new JDialog(windowAncestor);
 		dialog.setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
@@ -259,7 +259,7 @@ public abstract class ConcurrentTaskControl extends javax.swing.JPanel {
 					result.set(call.call());
 					done.set(true);
 				} finally {
-					UIUtil.invokeLater(new Runnable() {
+					UIUtil.invokeLater(100, new Runnable() {
 						@Override
 						public void run() {
 							concurrentTaskControl.closeWindow();

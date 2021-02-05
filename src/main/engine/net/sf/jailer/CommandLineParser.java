@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,30 +15,37 @@
  */
 package net.sf.jailer;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 
 /**
  * Parser for {@link CommandLine}.
- * 
+ *
  * @author Ralf Wisser
  */
 public class CommandLineParser {
-	
+
 	/**
 	 * Parses arguments and initializes the parser.
-	 * 
+	 *
 	 * @param args the arguments
 	 * @param silent if <code>true</code>, no error messages will be written
 	 */
-	public static CommandLine parse(String[] args, boolean silent) throws Exception {
+	public static CommandLine parse(String[] cliArgs, boolean silent) throws Exception {
 		CommandLine commandLine = new CommandLine();
 		try {
+			String[] args = preprocessFileLookup(cliArgs);
 			List<String> theArgs = new ArrayList<String>();
-			
+
 			final String ESC_PREFIX = "((!JAILER_MINUS_ESC!!)";
 
 			int i = 0;
@@ -65,24 +72,50 @@ public class CommandLineParser {
 			commandLine.arguments = escapedWords;
 			if (commandLine.arguments.isEmpty()) {
 				if (!silent) {
-					printUsage();
+					printUsage(args);
 					return null;
 				}
 			}
 			return commandLine;
 		} catch (CmdLineException e) {
 			System.out.println(e.getMessage());
-			printUsage();
+			printUsage(cliArgs);
 			throw e;
 		}
+	}
+
+	public static String[] preprocessFileLookup(String[] cArgs) throws IOException {
+		List<String> result = new ArrayList<String>();
+		for (int i = 0; i < cArgs.length; ++i) {
+			if ("-file-lookup".equals(cArgs[i]) && i < cArgs.length - 1) {
+				BufferedReader in = new BufferedReader(new FileReader(new File(cArgs[i + 1])));
+				String line = in.readLine();
+				in.close();
+				if (line == null) {
+					throw new RuntimeException("File \"" + cArgs[i + 1] + "\" is empty");
+				}
+				if (i > 0 && !"-".equals(cArgs[i - 1])) {
+					result.add("-");
+				}
+				result.add(line);
+				++i;
+			} else {
+				result.add(cArgs[i]);
+			}
+		}
+		return result.toArray(new String[0]);
 	}
 
 	/**
 	 * Prints out usage.
 	 */
-	public static void printUsage() {
+	public static void printUsage(String[] args) {
+		String cmd = "sh jailer.sh";
+		if (System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH).startsWith("windows")) {
+			cmd = "jailer.bat";
+		}
 		System.out.println("usage:");
-		System.out.println("  jailer export [options] <extraction-model> <jdbc-driver-class> <db-URL> <db-user> <db-password>");
+		System.out.println("  " + cmd + " export [options] <extraction-model> <jdbc-driver-class> <db-URL> <db-user> <db-password>");
 		System.out.println("    extracts data (see option '-e') and optionally creates a delete-script (see option '-d')");
 		System.out.println("    -where subject condition. Optional, overrides condition in extraction-model");
 		System.out.println("    -format [SQL, XML, DBUNIT_FLAT_XML or LIQUIBASE_XML]");
@@ -90,42 +123,59 @@ public class CommandLineParser {
 		System.out.println("    -xml-date pattern for dates in XML and LIQUIBASE_XML export file");
 		System.out.println("    -xml-time pattern for times in XML and LIQUIBASE_XML export file");
 		System.out.println("    -xml-timestamp pattern for time-stamps in XML and LIQUIBASE_XML export file");
-		System.out.println("    -t prevents deletion of entities from 'tabu'-tables");
 		System.out.println();
-		System.out.println("  jailer import <sql-script> <jdbc-driver-class> <db-URL> <db-user> <db-password>");
-		System.out.println("    imports data (with C|BLOB support)");
+		System.out.println("  " + cmd + " import <sql-script> <jdbc-driver-class> <db-URL> <db-user> <db-password>");
+		System.out.println("    imports data (with CLOB/BLOB/XML support)");
 		System.out.println();
-		System.out.println("  jailer delete [options] <extraction-model> <jdbc-driver-class> <db-URL> <db-user> <db-password>");
+		System.out.println("  " + cmd + " delete [options] <extraction-model> <jdbc-driver-class> <db-URL> <db-user> <db-password>");
 		System.out.println("    Like export, but skips the export and creates a delete-script (see option '-d')");
-		System.out.println("    -where subject condition. Optional, overrides condition in extraction-model");
-		System.out.println("    -t prevents deletion of entities from 'tabu'-tables");
+		System.out.println("    -where <subject condition>: optional, overrides condition in extraction-model");
 		System.out.println();
-		System.out.println("  jailer create-ddl [-datamodel VAL] [-target-dbms <DBMS>] [-working-table-schema VAL] [<extraction-model> -independent-working-tables] [-no-rowid]");
+		System.out.println("  " + cmd + " create-ddl [-datamodel VAL] [-target-dbms <DBMS>] [-working-table-schema VAL] [<extraction-model> -independent-working-tables] [-use-rowid] [-use-rowid-if-needed]");
 		System.out.println("    creates the DDL for the working-tables and prints it to stdout");
 		System.out.println();
-		System.out.println("  jailer create-ddl <jdbc-driver-class> <db-URL> <db-user> <db-password> [<extraction-model> -independent-working-tables] [-no-rowid]");
-		System.out.println("    creates the DDL for the working-tables and executes it");
+		System.out.println("  " + cmd + " create-ddl <jdbc-driver-class> <db-URL> <db-user> <db-password> [<extraction-model> -independent-working-tables] [-use-rowid] [-use-rowid-if-needed]");
+		System.out.println("    creates the working-tables");
 		System.out.println();
-		System.out.println("  jailer build-model [-schema <schema>] <jdbc-driver-class> <db-URL> <db-user> <db-password>");
-		System.out.println("    automatically retrieves datamodel elements using the 'model-finder' beans");
-		System.out.println("    reduces JDBC-Introspection to schema <schema>");
+		System.out.println("  " + cmd + " build-model [-schema <schema>] <jdbc-driver-class> <db-URL> <db-user> <db-password>");
+		System.out.println("    determines table and relationship information through database analysis");
+		System.out.println("    -schema <schema>: limits analysis to the schema <schema>");
 		System.out.println();
-		System.out.println("  jailer print-datamodel [options] {<restriction-model>}*");
-		System.out.println("    prints restricted data-model");
-		System.out.println("    -c with closures ");
+		System.out.println("  " + cmd + " render-datamodel [-datamodel VAL] [<extraction-model>] ");
+		System.out.println("    generates a HTML render of the (restricted) data model into directory 'render'");
 		System.out.println();
-		System.out.println("  jailer render-datamodel [options] {<restriction-model>}* ");
-		System.out.println("    generates a HTML render of the restricted data-model into directory 'render'");
-		System.out.println();
-		System.out.println("  jailer find-association [options] <source-table> <destination-table> {<restriction-model>}*");
-		System.out.println("    finds the shortest path of associations between two tables");
-		System.out.println("    -u considers associations as un-directed");
+		System.out.println("  " + cmd + " print-closure <extraction-model> [<separator>] [-datamodel VAL]");
+		System.out.println("    prints a list of all tables that are directly or transitively associated with a subject table,");
+		System.out.println("    taking into account the restrictions on the associations (the so-called \"Closure\")");
+		System.out.println("    <separator>: optional separator between table names in the output");
 		System.out.println();
 		System.out.println("options:");
 		CmdLineParser cmdLineParser = new CmdLineParser(new CommandLine());
-		cmdLineParser.setUsageWidth(120);
+		cmdLineParser.setUsageWidth(160);
 		cmdLineParser.printUsage(System.out);
 		System.out.println();
+		printAruments(System.out, args, null);
+	}
+
+	public static void printAruments(PrintStream out, String[] args, String password) {
+		if (args.length > 0) {
+			out.println();
+			out.print("Arguments: ");
+			int i = 0;
+			while (i < args.length) {
+				String arg = args[i];
+				if (arg.equals(password)) {
+					arg = "<password> (not shown)";
+				}
+				if (i > 0) {
+					out.print(", ");
+				}
+				out.print(" " + i + ": {" + arg + "}");
+				++i;
+			}
+			out.println();
+			out.println();
+		}
 	}
 
 }

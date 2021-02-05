@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -143,7 +143,7 @@ public class ColumnMapperDialog extends javax.swing.JDialog {
 
         jPanel1 = new javax.swing.JPanel();
         jLabel1 = new javax.swing.JLabel();
-        tableCombobox = new net.sf.jailer.ui.JComboBox();
+        tableCombobox = new net.sf.jailer.ui.JComboBox2();
         jLabel2 = new javax.swing.JLabel();
         jPanel2 = new javax.swing.JPanel();
         formatButton = new javax.swing.JButton();
@@ -294,7 +294,7 @@ public class ColumnMapperDialog extends javax.swing.JDialog {
     private javax.swing.JButton okButton;
     private javax.swing.JPanel paramPanel;
     private javax.swing.JButton resetButton;
-    private net.sf.jailer.ui.JComboBox tableCombobox;
+    private net.sf.jailer.ui.JComboBox2 tableCombobox;
     // End of variables declaration//GEN-END:variables
 
     private final RSyntaxTextArea mappingField;

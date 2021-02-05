@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ import java.io.OutputStreamWriter;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import net.sf.jailer.ExecutionContext;
 import net.sf.jailer.configuration.DBMS;
@@ -36,13 +36,14 @@ import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.PrimaryKey;
 import net.sf.jailer.datamodel.Table;
+import net.sf.jailer.extractionmodel.SubjectLimitDefinition;
 import net.sf.jailer.importfilter.ImportFilterManager;
 import net.sf.jailer.subsetting.TransformerFactory;
 import net.sf.jailer.util.JobManager;
 
 /**
- * Persistent graph of entities. 
- * 
+ * Persistent graph of entities.
+ *
  * @author Ralf Wisser
  */
 public abstract class EntityGraph {
@@ -51,17 +52,17 @@ public abstract class EntityGraph {
 	 * Name of the graph-table.
 	 */
 	public static final String ENTITY_GRAPH = "JAILER_GRAPH";
-	
+
 	/**
 	 * Name of the (helper) set-table.
 	 */
 	public static final String ENTITY_SET_ELEMENT = "JAILER_SET";
-	
+
 	/**
 	 * Name of the entity-table.
 	 */
 	public static final String ENTITY = "JAILER_ENTITY";
-	
+
 	/**
 	 * Name of the dependency-table.
 	 */
@@ -69,14 +70,14 @@ public abstract class EntityGraph {
 
 	/**
 	 * Sets birthday of subject rows.
-	 * 
+	 *
 	 * @param birthdayOfSubject birthday of subject rows
 	 */
 	public abstract void setBirthdayOfSubject(int birthdayOfSubject);
-	
+
 	public final DataModel dataModel;
 	protected boolean isTruncated = false;
-	
+
 	/**
 	 * The execution context.
 	 */
@@ -94,49 +95,64 @@ public abstract class EntityGraph {
 		this.graphID = graphID;
 		this.dataModel = dataModel;
 	}
-	
-	/**
-	 * Unique IDs for each association to be used for explanation.
-	 */
-	public Map<Association, Integer> explainIdOfAssociation = new HashMap<Association, Integer>();
-	
+
 	/**
 	 * Copies an entity-graph.
-	 * 
+	 *
 	 * @param graph the graph to copy
 	 * @param graphID the unique ID of the graph
 	 * @param session for executing SQL-Statements
 	 * @return the newly created entity-graph
-	 * @throws Exception 
+	 * @throws Exception
 	 */
 	public abstract EntityGraph copy(int graphID, Session session) throws SQLException;
 
 	/**
+	 * Creates a new entity-graph of same type and session.
+	 */
+	public abstract EntityGraph createNewGraph() throws SQLException;
+
+	/**
+	 * Copies some tables.
+	 *
+	 * @param tables tables to copy
+	 */
+	public EntityGraph copy(Set<Table> tables) throws SQLException {
+		EntityGraph entityGraph = createNewGraph();
+		for (Table table: tables) {
+			getSession().executeUpdate(
+				"Insert into " + dmlTableReference(ENTITY, getSession()) + "(r_entitygraph, " + getUniversalPrimaryKey().columnList(null) + ", birthday, orig_birthday, type) " +
+					"Select " + entityGraph.graphID + ", " + getUniversalPrimaryKey().columnList(null) + ", birthday, birthday, type From " + dmlTableReference(ENTITY, getSession()) + " Where r_entitygraph=" + graphID + " and type=" + typeName(table) + " and birthday>=0");
+		}
+		return entityGraph;
+	}
+
+	/**
 	 * Gets the age of the graph.
-	 * 
+	 *
 	 * @return the age of the graph
 	 */
 	public abstract int getAge() throws SQLException;
 
 	/**
 	 * Sets the age of the graph.
-	 * 
+	 *
 	 * @param age the age of the graph
 	 */
 	public abstract void setAge(int age) throws SQLException;
-	
+
 	/**
 	 * Gets the number of entities in the graph.
-	 * 
+	 *
 	 * @return the number of entities in the graph
 	 */
 	public abstract long getSize() throws SQLException;
 
 	/**
 	 * Gets the number of entities from given tables in the graph.
-	 * 
+	 *
 	 * @return the number of entities in the graph
-	 * @throws SQLException 
+	 * @throws SQLException
 	 */
 	public long getSize(final Set<Table> tables) throws SQLException {
 		final long[] total = new long[1];
@@ -159,35 +175,68 @@ public abstract class EntityGraph {
 	/**
 	 * Deletes the graph.
 	 */
-	public abstract void delete() throws SQLException;
+	public final void delete() throws SQLException {
+		delete(false);
+	}
+
+	/**
+	 * Deletes the graph.
+	 *
+	 * @param forced force deletion. if <code>true</code>, don't allow optimization.
+	 */
+	public abstract void delete(boolean forced);
 
 	/**
 	 * Adds entities to the graph.
-	 * 
-	 * @param table the table 
+	 *
+	 * @param table the table
 	 * @param condition the condition in SQL that the entities must fulfill
 	 * @param today the birthday of the new entities
-	 * 
+	 *
 	 * @return row-count
 	 */
 	public abstract long addEntities(Table table, String condition, int today) throws SQLException;
-	
+
 	/**
-	 * Resolves an association. Retrieves and adds all entities 
-	 * associated with an entity born yesterday in the graph 
+	 * Adds limited number of entities to the graph.
+	 *
+	 * @param table the table
+	 * @param condition the condition in SQL that the entities must fulfill
+	 * @param today the birthday of the new entities
+	 * @param limitDefinition limit
+	 *
+	 * @return row-count
+	 */
+	public abstract long addEntities(Table table, String condition, int today, SubjectLimitDefinition limitDefinition, boolean joinWithEntity) throws SQLException;
+
+	/**
+	 * Resolves an association. Retrieves and adds all entities
+	 * associated with an entity born yesterday in the graph
 	 * and adds the dependencies.
-	 * 
-	 * @param table the table 
+	 *
+	 * @param table the table
 	 * @param association the association to resolve
 	 * @param today the birthday of the new entities
-	 * 
+	 *
 	 * @return row-count or -1, if association is ignored
 	 */
 	public abstract long resolveAssociation(Table table, Association association, int today) throws SQLException;
 
 	/**
+	 * Resolves an association. Retrieves and adds all entities
+	 * associated with an entity into a given entity-graph.
+	 * Restrictions are ignored.
+	 *
+	 * @param table the table
+	 * @param association the association to resolve
+	 *
+	 * @return row-count
+	 */
+	public abstract long resolveAssociation(final Table table, Association association, EntityGraph otherGraph, EntityGraph universum, boolean forDelete) throws SQLException;
+
+	/**
 	 * Adds dependencies.
-	 * 
+	 *
 	 * @param from source of dependency
 	 * @param fromAlias alias for from-table
 	 * @param to destination of dependency
@@ -197,7 +246,7 @@ public abstract class EntityGraph {
 	 * @param dependencyId id of dependency
 	 */
 	public abstract void addDependencies(Table from, String fromAlias, Table to, String toAlias, String condition, int aggregationId, int dependencyId, boolean isAssociationReversed) throws SQLException;
-	
+
 	/**
 	 * Gets distinct association-ids of all edged.
 	 */
@@ -216,31 +265,24 @@ public abstract class EntityGraph {
 
 	/**
 	 * Reads all entities of a given table which are marked as independent or as roots.
-	 * 
+	 *
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
 	 */
 	public abstract void readMarkedEntities(Table table, boolean orderByPK) throws SQLException;
-	
+
 	/**
 	 * Reads all entities of a given table which are marked as independent or as roots.
-	 * 
+	 *
 	 * @param reader for reading the result-set
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
 	 */
 	public abstract void readMarkedEntities(Table table, Session.ResultSetReader reader, String selectionSchema, String originalPKAliasPrefix, boolean orderByPK) throws SQLException;
-	
-	/**
-	 * Unites the graph with another one and deletes the other graph.
-	 * 
-	 * @param graph the graph to be united with this graph
-	 */
-	public abstract void uniteWith(EntityGraph graph) throws SQLException;
-	
+
 	/**
 	 * Reads all entities of a given table.
-	 * 
+	 *
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
 	 */
@@ -248,16 +290,17 @@ public abstract class EntityGraph {
 
 	/**
 	 * Updates columns of a table.
-	 * 
+	 *
 	 * @param table the table
 	 * @param columns the columns;
+	 * @param inSourceSchema if <code>true</code>, use source-schema-mapping, else use schema-mapping
 	 * @param reason to be written as comment
 	 */
-	public abstract void updateEntities(Table table, Set<Column> columns, OutputStreamWriter scriptFileWriter, DBMS targetConfiguration, String reason) throws SQLException;
+	public abstract void updateEntities(Table table, Set<Column> columns, OutputStreamWriter scriptFileWriter, DBMS targetConfiguration, boolean inSourceSchema, String reason) throws SQLException;
 
 	/**
 	 * Reads some columns of all entities of a given table without using filters.
-	 * 
+	 *
 	 * @param table the table
 	 * @param columns the columns
 	 * @param reader to read
@@ -268,7 +311,7 @@ public abstract class EntityGraph {
 	 * Deletes all entities which are marked as independent.
 	 */
 	public abstract void deleteIndependentEntities(Table table) throws SQLException;
-	
+
 	/**
 	 * Deletes all entities from a given table.
 	 */
@@ -276,7 +319,7 @@ public abstract class EntityGraph {
 
 	/**
 	 * Counts the entities of a given table in this graph.
-	 * 
+	 *
 	 * @param table the table
 	 * @return the number of entities from table in this graph
 	 */
@@ -285,16 +328,17 @@ public abstract class EntityGraph {
 	/**
 	 * Removes all entities from this graph which are associated with an entity
 	 * outside the graph.
-	 * 
-	 * @param deletedEntitiesAreMarked if true, consider entity as deleted if its birthday is negative
+	 *
 	 * @param association the association
+	 * @param deletedEntitiesAreMarked if true, consider entity as deleted if its birthday is negative
+	 * @param allTables set of tables from which there are entities in E
 	 * @return number of removed entities
 	 */
-	public abstract long removeAssociatedDestinations(Association association, boolean deletedEntitiesAreMarked) throws SQLException;
-	
+	public abstract long removeAssociatedDestinations(Association association, boolean deletedEntitiesAreMarked, Set<Table> allTables) throws SQLException;
+
 	/**
-	 * Reads all entities which depends on given entity. 
-	 * 
+	 * Reads all entities which depends on given entity.
+	 *
 	 * @param table the table from which to read entities
 	 * @param association the dependency
 	 * @param resultSet current row is given entity
@@ -302,48 +346,41 @@ public abstract class EntityGraph {
 	 * @param selectionSchema the selection schema
 	 */
 	public abstract void readDependentEntities(Table table, Association association, ResultSet resultSet, ResultSetMetaData resultSetMetaData, ResultSetReader reader, Map<String, Integer> typeCache, String selectionSchema, String originalPKAliasPrefix) throws SQLException;
-	
+
 	/**
-	 * Marks all entities which depends on given entity as traversed. 
-	 * 
+	 * Marks all entities which depends on given entity as traversed.
+	 *
 	 * @param table the table from which to read entities
 	 * @param association the dependency
 	 * @param resultSet current row is given entity
 	 */
 	public abstract void markDependentEntitiesAsTraversed(Association association, ResultSet resultSet, ResultSetMetaData resultSetMetaData, Map<String, Integer> typeCache) throws SQLException;
-	
+
 	/**
-	 * Reads all non-traversed dependencies. 
-	 * 
+	 * Reads all non-traversed dependencies.
+	 *
 	 * @param table the source of dependencies to look for
 	 * @param reader reads the entities
 	 */
 	public abstract void readNonTraversedDependencies(Table table, ResultSetReader reader) throws SQLException;
-	
+
 	/**
 	 * Removes all reflexive dependencies of given table.
-	 * 
+	 *
 	 * @param table the table
 	 */
 	public abstract void removeReflexiveDependencies(Table table) throws SQLException;
-	
+
 	/**
 	 * Gets total row-count.
-	 * 
+	 *
 	 * @return total row-count
 	 */
 	public abstract long getTotalRowcount();
-	
-	/**
-	 * Whether or not to store additional information in order to create a 'explain.log'.
-	 * 
-	 * @param explain <code>true</code> iff predecessors of each entity must be stored
-	 */
-	public abstract void setExplain(boolean explain);
 
 	/**
 	 * Gets the universal primary key.
-	 * 
+	 *
 	 * @return the universal primary key
 	 */
 	public abstract PrimaryKey getUniversalPrimaryKey();
@@ -355,22 +392,24 @@ public abstract class EntityGraph {
 
 	/**
 	 * Gets the session.
-	 * 
+	 *
 	 * @return the session
 	 */
 	public abstract Session getSession();
 
 	/**
 	 * Creates a unique ID for a new graph.
-	 * 
+	 *
 	 * @return a unique ID
 	 */
 	public static int createUniqueGraphID() {
-		return Math.abs((int) System.currentTimeMillis()) % 65536;
+		return Math.abs(Math.abs((int) nextGraphId.getAndIncrement())) % (Integer.MAX_VALUE / 4);
 	}
-	
+
+	private static AtomicLong nextGraphId = new AtomicLong(System.currentTimeMillis() % 30000);
+
 	private int lobCount = 0;
-	
+
 	/**
 	 * Increments lob-counter and returns new value.
 	 */
@@ -379,23 +418,21 @@ public abstract class EntityGraph {
 	}
 
 	public abstract DataModel getDatamodel();
-	
-	public static long maxTotalRowcount;
-	
+
 	/**
 	 * Closes the graph. Deletes the local database.
 	 */
 	abstract public void close() throws SQLException;
 
 	/**
-	 * Removes all dependencies for a given association. 
-	 * 
+	 * Removes all dependencies for a given association.
+	 *
 	 * @param association the asociation
 	 */
 	public void removeDependencies(Association association) throws SQLException {
 		deleteRows(getSession(), dmlTableReference(DEPENDENCY, getSession()), "depend_id=" + association.getId() + " and r_entitygraph=" + graphID);
 	}
-	
+
 	public abstract Session getTargetSession();
 
 	public void setDeleteMode(boolean deleteMode) {
@@ -405,7 +442,7 @@ public abstract class EntityGraph {
 	protected int typeName(Table table) {
 		return table.getOrdinal();
 	}
-	
+
 	/**
 	 * The {@link TransformerFactory}.
 	 */
@@ -418,7 +455,7 @@ public abstract class EntityGraph {
 
 	/**
 	 * Sets the {@link TransformerFactory}.
-	 * 
+	 *
 	 * @param transformerFactory the factory
 	 */
 	public void setTransformerFactory(TransformerFactory transformerFactory) {
@@ -427,7 +464,7 @@ public abstract class EntityGraph {
 
 	/**
 	 * Gets the {@link TransformerFactory}.
-	 * 
+	 *
 	 * @return the factory
 	 */
 	public TransformerFactory getTransformerFactory() {
@@ -436,22 +473,22 @@ public abstract class EntityGraph {
 
 	/**
 	 * Sets the {@link ImportFilterManager}
-	 * 
+	 *
 	 * @param importFilterManager the {@link ImportFilterManager}
 	 */
 	public void setImportFilterManager(ImportFilterManager importFilterManager) {
 		this.importFilterManager = importFilterManager;
 	}
-	
+
 	/**
 	 * Gets the {@link ImportFilterManager}
-	 * 
+	 *
 	 * @return the {@link ImportFilterManager}
 	 */
 	public ImportFilterManager getImportFilterManager() {
 		return importFilterManager;
 	}
-	
+
 	/**
 	 * Insert the values of columns with non-derived-import-filters into the local database.
 	 */
@@ -462,7 +499,7 @@ public abstract class EntityGraph {
 			importFilterManager.fillAndWriteMappingTables(this, jobManager, dmlResultWriter, numberOfEntities, targetSession, targetDBMSConfiguration);
 		}
 	}
-	
+
 	/**
 	 * Creates the DROP-statements for the mapping tables.
 	 */
@@ -474,11 +511,11 @@ public abstract class EntityGraph {
 
 	/**
 	 * Gets table reference for DML statements for a given working table.
-	 * 
+	 *
 	 * @param tableName the working table
 	 * @param session holds connection to DBMS
 	 * @return table reference for the working table
-	 * @throws SQLException 
+	 * @throws SQLException
 	 */
 	protected String dmlTableReference(String tableName, Session session) throws SQLException {
 		return SQLDialect.dmlTableReference(tableName, session, executionContext);
@@ -487,11 +524,11 @@ public abstract class EntityGraph {
 	/**
 	 * Deletes rows from table.
 	 * Applies DBMS-specific deletion strategies, if available.
-	 * 
+	 *
 	 * @param session the session
 	 * @param table the table
 	 * @param where the "where" condition
-	 * 
+	 *
 	 * @return row count
 	 */
 	protected long deleteRows(Session session, String table, String where) throws SQLException {
@@ -513,13 +550,13 @@ public abstract class EntityGraph {
 				// fall back
 			}
 		}
-		
+
 		return rc + session.executeUpdate("Delete from " + table + " where " + where);
 	}
 
 	/**
 	 * Tries to delete this graph using "truncate".
-	 * 
+	 *
 	 * @param checkExist if <code>true</code>, checks existence of each graph
 	 */
 	public void truncate(ExecutionContext executionContext, boolean checkExist) throws SQLException {
@@ -540,15 +577,19 @@ public abstract class EntityGraph {
 			}
 		});
 		if (count[0] == 1) {
+			boolean wasSilent = getSession().getSilent();
 			try {
+				getSession().setSilent(true);
 				getSession().execute("Truncate Table " + SQLDialect.dmlTableReference(DEPENDENCY, getSession(), executionContext));
 				getSession().execute("Truncate Table " + SQLDialect.dmlTableReference(ENTITY, getSession(), executionContext));
 				getSession().execute("Truncate Table " + SQLDialect.dmlTableReference(ENTITY_GRAPH, getSession(), executionContext));
 			} catch (SQLException e) {
 				// "truncate" not supported
 				return;
+			} finally {
+				getSession().setSilent(wasSilent);
 			}
-			isTruncated  = true;
+			isTruncated = true;
 		}
 	}
 

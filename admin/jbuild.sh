@@ -1,3 +1,5 @@
+echo on
+
 echo $JAVA_HOME
 
 echo "$JAVA_HOME/bin/java" -version 
@@ -18,6 +20,21 @@ cd git/Jailer
 git pull
 sh admin/release.sh $1
 
+# make *.sh executable
+cd
+cd tmp
+rm -r _2$1
+mkdir _2$1
+echo wsl rm -rf /home/ralf/jailer > _.bat
+./_.bat
+echo wsl unzip /mnt/c/Users/ralfw/tmp/jailer_$1.zip -d /home/ralf/ > _.bat
+./_.bat
+echo wsl chmod a+x /home/ralf/jailer/*.sh > _.bat
+./_.bat
+rm jailer_$1.zip
+echo "wsl cd; zip -r /mnt/c/Users/ralfw/tmp/jailer_$1.zip jailer" > _.bat
+./_.bat
+
 cd
 cd tmp
 rm -r _$1
@@ -25,6 +42,33 @@ mkdir _$1
 cd _$1
 unzip ../jailer_$1.zip 
 cd jailer/
+
+unzip docs/admin.zip
+echo rm -rf ../../oss
+rm -rf ../../oss
+mkdir ../../oss
+sed s/VERSION/$1/g admin/oss/jailer-engine.pom > ../../oss/jailer-engine-$1.pom
+sed s/VERSION/$1/g admin/oss/oss.bat > ../../oss/oss.bat
+cp maven-artifacts/* ../../oss/
+
+cd admin
+./j14pack.bat $1
+cd
+cp /mnt/c/tmp/*.msi .
+
+cd
+cd tmp
+rm -r _$1
+mkdir _$1
+cd _$1
+unzip ../jailer_$1.zip 
+cd jailer/
+
+unzip docs/admin.zip
+cd admin
+dos2unix *.sh
+echo "wsl sh j14pack.sh $1" > _.bat
+./_.bat
 
 cd
 cd tmp
@@ -44,7 +88,7 @@ CP="$CP;$LIB/activation-1.0.2.jar"
 CP="$CP;$LIB/jaxb-core-2.3.0-b170127.1453.jar"
 CP="$CP;$LIB/jaxb-impl-2.3.0-b170127.1453.jar"
 CP="$CP;$LIB/jaxb-api-2.3.0-b170201.1204.jar"
-CP="$CP;$LIB/jsqlparser-1.3.jar"
+CP="$CP;$LIB/jsqlparser-3.2.jar"
 CP="$CP;$LIB/tablefilter-swing-5.3.1.jar"
 CP="$CP;jailer.jar"
 

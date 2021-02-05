@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,21 +33,24 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import net.sf.jailer.configuration.DBMS;
 import net.sf.jailer.database.SQLDialect;
+import net.sf.jailer.database.Session;
+import net.sf.jailer.datamodel.Column;
 import net.sf.jailer.datamodel.DataModel;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.entitygraph.EntityGraph;
 
 /**
  * Some utility methods.
- * 
+ *
  * @author Ralf Wisser
  */
 public class SqlUtil {
-	
+
 	/**
 	 * Change alias A to B and B to A in a SQL-condition.
-	 * 
+	 *
 	 * @param condition the condition
 	 * @return condition with revered aliases
 	 */
@@ -68,10 +71,10 @@ public class SqlUtil {
 		}
 		return reversed.toString();
 	}
-	
+
 	/**
 	 * Replaces the aliases A and B with given aliases in a SQL-condition.
-	 * 
+	 *
 	 * @param condition the condition
 	 * @param aliasA alias for A
 	 * @param aliasB alias for B
@@ -99,10 +102,10 @@ public class SqlUtil {
 		}
 		return result.toString();
 	}
-	
+
 	/**
 	 * Replaces the alias T with given alias in a SQL-condition.
-	 * 
+	 *
 	 * @param condition the condition
 	 * @param alias alias for T
 	 * @return condition with replaced aliases
@@ -124,16 +127,16 @@ public class SqlUtil {
 		}
 		return result.toString();
 	}
-	
+
 	/**
 	 * Resolves the pseudo-columns in a restriction condition.
-	 * 
+	 *
 	 * @param condition the condition
 	 * @param entityAAlias alias for entity table joined with A
 	 * @param entityBAlias alias for entity table joined with B
 	 * @param birthdayOfSubject birthday of subject
 	 * @param today today
-	 * @param inDeleteMode 
+	 * @param inDeleteMode
 	 */
 	public static String resolvePseudoColumns(String condition, String entityAAlias, String entityBAlias, int today, int birthdayOfSubject, boolean inDeleteMode) {
 		return resolvePseudoColumns(condition, entityAAlias, entityBAlias, today, birthdayOfSubject, "birthday", inDeleteMode);
@@ -141,16 +144,16 @@ public class SqlUtil {
 
 	/**
 	 * Resolves the pseudo-columns in a restriction condition.
-	 * 
+	 *
 	 * @param condition the condition
 	 * @param entityAAlias alias for entity table joined with A
 	 * @param entityBAlias alias for entity table joined with B
 	 * @param birthdayOfSubject birthday of subject
 	 * @param today today
 	 * @param birthdayColumnName name of the column which holds the birthday of an entity ('birthday' or 'orig_birthday')
-	 * @param inDeleteMode 
+	 * @param inDeleteMode
 	 */
-	public static String resolvePseudoColumns(String condition, String entityAAlias, String entityBAlias, int today, int birthdayOfSubject, String birthdayColumnName, boolean inDeleteMode) {
+	public static String resolvePseudoColumns(String condition, String entityAAlias, String entityBAlias, int today, int birthdayOfSubject, String birthdayColumnName, Boolean inDeleteMode) {
 		String aBirthday = entityAAlias == null? "" + (today - birthdayOfSubject) : ("(" + entityAAlias + "." + birthdayColumnName + " - " + birthdayOfSubject + ")");
 		String bBirthday = entityBAlias == null? "" + (today - birthdayOfSubject) : ("(" + entityBAlias + "." + birthdayColumnName + " - " + birthdayOfSubject + ")");
 		String aIsSubject = entityAAlias == null? "(" + (today - birthdayOfSubject) + " = 0)" : ("(" + entityAAlias + "." + birthdayColumnName + " - " + birthdayOfSubject + " = 0)");
@@ -160,20 +163,22 @@ public class SqlUtil {
 		condition = condition.replaceAll("(?i:b\\s*\\.\\s*\\$distance)", Matcher.quoteReplacement(bBirthday));
 		condition = condition.replaceAll("(?i:a\\s*\\.\\s*\\$is_subject)", Matcher.quoteReplacement(aIsSubject));
 		condition = condition.replaceAll("(?i:b\\s*\\.\\s*\\$is_subject)", Matcher.quoteReplacement(bIsSubject));
-		
-		condition = condition.replaceAll("(?i:\\$in_delete_mode)", Matcher.quoteReplacement(inDeleteMode? "(1=1)" : "(1=0)"));
-		
+
+		if (inDeleteMode != null) {
+			condition = condition.replaceAll("(?i:\\$in_delete_mode)", Matcher.quoteReplacement(inDeleteMode? "(1=1)" : "(1=0)"));
+		}
+
 		return condition;
 	}
 
 	/**
 	 * Resolves the pseudo-columns in a restriction condition.
-	 * 
+	 *
 	 * @param condition the condition
 	 * @param birthdayOfSubject birthday of subject
 	 * @param today today
-	 * @param reversed 
-	 * @param inDeleteMode 
+	 * @param reversed
+	 * @param inDeleteMode
 	 */
 	public static String resolvePseudoColumns(String condition, int today, int birthdayOfSubject, boolean reversed, boolean inDeleteMode) {
 		int da = reversed? 0 : 1;
@@ -188,21 +193,21 @@ public class SqlUtil {
 		condition = condition.replaceAll("(?i:a\\s*\\.\\s*\\$is_subject)", Matcher.quoteReplacement(aIsSubject));
 		condition = condition.replaceAll("(?i:b\\s*\\.\\s*\\$is_subject)", Matcher.quoteReplacement(bIsSubject));
 
-		condition = condition.replaceAll("(?i:$in_delete_mode)", Matcher.quoteReplacement(inDeleteMode? "(1=1)" : "(1=0)"));
-		
+		condition = condition.replaceAll("(?i:\\$in_delete_mode)", Matcher.quoteReplacement(inDeleteMode? "(1=1)" : "(1=0)"));
+
 		return condition;
 	}
 
 	/**
 	 * Reads a table-list from CSV-file.
-	 * 
+	 *
 	 * @param dataModel to get tables from
 	 * @param tableFile the file containing the list
 	 * @return set of tables, empty list if file contains no tables
 	 */
 	public static Set<Table> readTableList(CsvFile tableFile, DataModel dataModel, Map<String, String> sourceSchemaMapping) {
 		Set<Table> tabuTables = new HashSet<Table>();
-		
+
 		if (tableFile != null) {
 			for (CsvFile.Line line: tableFile.getLines()) {
 				String name = mappedSchema(sourceSchemaMapping, line.cells.get(0));
@@ -217,8 +222,8 @@ public class SqlUtil {
 	}
 
 	/**
-	 * Replaces schema of qualified table name according to a schema-map. 
-	 * 
+	 * Replaces schema of qualified table name according to a schema-map.
+	 *
 	 * @param schemaMapping the mapping
 	 * @param tableName the table name
 	 * @return table name with replaced schema
@@ -253,7 +258,7 @@ public class SqlUtil {
 		JAILER_TABLES.add(SQLDialect.DUAL_TABLE);
 		JAILER_TABLES.add(SQLDialect.TMP_TABLE_);
 	}
-	
+
 	/**
 	 * List of all jailer tables (upper case).
 	 */
@@ -266,31 +271,46 @@ public class SqlUtil {
 		JAILER_MH_TABLES.add(EntityGraph.DEPENDENCY);
 		JAILER_MH_TABLES.add(SQLDialect.CONFIG_TABLE_);
 	}
-	
+
 	/**
 	 * Gets type of column from result-set.
-	 * 
+	 *
 	 * @param resultSet result-set
 	 * @param i column index
 	 * @param typeCache for caching types
 	 * @return type according to {@link Types}
 	 */
-	public static int getColumnType(ResultSet resultSet, ResultSetMetaData resultSetMetaData, int i, Map<Integer, Integer> typeCache) throws SQLException {
-		Integer type = typeCache.get(i);
+	public static int getColumnType(DBMS configuration, ResultSet resultSet, ResultSetMetaData resultSetMetaData, int i, Map<Integer, Integer> typeCache) throws SQLException {
+		Integer type = typeCache != null? typeCache.get(i) : null;
 		if (type == null) {
 			try {
+				int columnDisplaySize = resultSetMetaData.getColumnDisplaySize(i);
+				String columnTypeNameWithLength = resultSetMetaData.getColumnTypeName(i) + "(" + (columnDisplaySize == Integer.MAX_VALUE? "max" : Integer.toString(columnDisplaySize)) + ")";
 				type = resultSetMetaData.getColumnType(i);
+				try {
+					if (configuration.isClobType(columnTypeNameWithLength)) {
+						type = Types.CLOB;
+					} else if (configuration.isNClobType(columnTypeNameWithLength)) {
+						type = Types.NCLOB;
+					} else if (configuration.isBlobType(columnTypeNameWithLength)) {
+						type = Types.BLOB;
+					}
+				} catch (Exception e) {
+					// ignore
+				}
 			} catch (Exception e) {
 				type = Types.OTHER;
 			}
-			typeCache.put(i, type);
+			if (typeCache != null) {
+				typeCache.put(i, type);
+			}
 		}
 		return type;
-	};
-	
+	}
+
 	/**
 	 * Gets type of column from result-set.
-	 * 
+	 *
 	 * @param resultSet result-set
 	 * @param columnName column name
 	 * @param typeCache for caching types
@@ -313,10 +333,10 @@ public class SqlUtil {
 		}
 		return type;
 	}
-	
+
 	/**
 	 * Splits a DML statement into several lines with limited length.
-	 * 
+	 *
 	 * @param sql the DML statement
 	 * @param maxLength maximum line length
 	 * @return DML statement with line breaks
@@ -331,7 +351,7 @@ public class SqlUtil {
 		boolean inLiteral = false;
 		for (int i = 0; i < sql.length(); ++i) {
 			char c = sql.charAt(i);
-			
+
 			if (currentLength >= maxLength) {
 				if (inLiteral && lastBreak <= 0) {
 					if (i + 1 < sql.length() && sql.charAt(i + 1) != '\'') {
@@ -345,14 +365,14 @@ public class SqlUtil {
 					lastBreak = -1;
 				}
 			}
-			
+
 			if ((!inLiteral) && (c == ' ' || c == ',')) {
 				lastBreak = sb.length();
 			} else if (c == '\n') {
 				currentLength = 0;
 				lastBreak = -1;
 			}
-			
+
 			++currentLength;
 			sb.append(c);
 			if (c == '\'') {
@@ -493,7 +513,7 @@ public class SqlUtil {
 	/**
 	 * Removes all non-meaningful fragments of an SQL statement
 	 * that might interfere with the SQL parser. (Comments, Literals, etc.)
-	 * 
+	 *
 	 * @param sqlStatement
 	 * @return
 	 */
@@ -556,10 +576,10 @@ public class SqlUtil {
 
 	/**
 	 * Removes comments and literals from SQL statement.
-	 * 
+	 *
 	 * @param statement
 	 *            the statement
-	 * 
+	 *
 	 * @return statement the statement without comments and literals
 	 */
 	private static String removeCommentsAndLiterals(String statement) {
@@ -587,6 +607,23 @@ public class SqlUtil {
 		}
 		matcher.appendTail(sb);
 		return sb.toString();
+	}
+
+	public static String columnLabel(Quoting quoting, Session session, DBMS targetDBMSConfiguration, Table table, String columnLabel) {
+		if (targetDBMSConfiguration != session.dbms) {
+			int count = 0;
+			String name = null;
+			for (Column column: table.getColumns()) {
+				if (Quoting.equalsIgnoreQuotingAndCase(columnLabel, column.name)) {
+					++count;
+					name = quoting.requote(column.name);
+				}
+			}
+			if (count == 1 && name != null) {
+				return name;
+			}
+		}
+		return quoting.quote(columnLabel);
 	}
 
 }

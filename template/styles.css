@@ -1,32 +1,30 @@
 <style type="text/css">
 <!--
-/* CSS Style-Sheet-Specifications       */
-/* created with (X)HTML-Format */
-/* http://www.openwebsuite.org */
+/* MessageFormat template for CSS Style-Sheet */
 
 //-->
-A	{
+A	'{
 		font-weight: bold;
-		}
-A:link	{
+		}'
+A:link	'{
 		color: #0000A0;
 		text-decoration: none;
-		}
-A:visited	{
+		}'
+A:visited	'{
 		color: #0000A0;
 		text-decoration: none;
-		}
-A:hover	{
+		}'
+A:hover	'{
 		color: #CC0000;
 		text-decoration: underline;
-		}
+		}'
 
-.titlebar {
+.titlebar '{
 		vertical-align: middle; font-weight: bold; background-color: rgb(220, 220, 255);
-		}
+		}'
 
-.highlightedrow {
-		background-color: rgb(230, 230, 240);
-		}
+.highlightedrow '{
+		background-color: rgb(240, 255, 255);
+		}'
 
 </style>

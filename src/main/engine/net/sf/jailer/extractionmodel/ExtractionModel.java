@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,12 +64,27 @@ public class ExtractionModel {
 	 * The table to read from.
 	 */
 	public final Table subject;
+
+	/**
+	 * Subject Limit Definition
+	 */
+	public SubjectLimitDefinition subjectLimitDefinition = new SubjectLimitDefinition(null, null);
 	
 	/**
 	 * Additional Subject.
 	 */
 	public static class AdditionalSubject {
+		
 		private Table subject;
+		
+		/**
+		 * Subject Limit Definition
+		 */
+		private SubjectLimitDefinition subjectLimitDefinition = new SubjectLimitDefinition(null, null);
+
+		/**
+		 * "Where" condition.
+		 */
 		private String condition;
 
 		/**
@@ -96,26 +111,36 @@ public class ExtractionModel {
 		public void setCondition(String condition) {
 			this.condition = condition;
 		}
-		public AdditionalSubject(Table subject, String condition) {
+
+		/**
+		 * @return Subject Limit Definition
+		 */
+		public SubjectLimitDefinition getSubjectLimitDefinition() {
+			return subjectLimitDefinition;
+		}
+		
+		/**
+		 * @param subjectLimitDefinition Subject Limit Definition
+		 */
+		public void setSubjectLimitDefinition(SubjectLimitDefinition subjectLimitDefinition) {
+			this.subjectLimitDefinition = subjectLimitDefinition;
+		}
+
+		public AdditionalSubject(Table subject, String condition, SubjectLimitDefinition subjectLimitDefinition) {
 			this.subject = subject;
 			this.condition = condition;
+			this.subjectLimitDefinition = subjectLimitDefinition;
 		}
-		/**
-		 * @see java.lang.Object#hashCode()
-		 */
+		
 		@Override
 		public int hashCode() {
 			final int prime = 31;
 			int result = 1;
-			result = prime * result
-					+ ((condition == null) ? 0 : condition.hashCode());
-			result = prime * result
-					+ ((subject == null) ? 0 : subject.hashCode());
+			result = prime * result + ((condition == null) ? 0 : condition.hashCode());
+			result = prime * result + ((subject == null) ? 0 : subject.hashCode());
+			result = prime * result + ((subjectLimitDefinition == null) ? 0 : subjectLimitDefinition.hashCode());
 			return result;
 		}
-		/**
-		 * @see java.lang.Object#equals(java.lang.Object)
-		 */
 		@Override
 		public boolean equals(Object obj) {
 			if (this == obj)
@@ -135,6 +160,11 @@ public class ExtractionModel {
 					return false;
 			} else if (!subject.equals(other.subject))
 				return false;
+			if (subjectLimitDefinition == null) {
+				if (other.subjectLimitDefinition != null)
+					return false;
+			} else if (!subjectLimitDefinition.equals(other.subjectLimitDefinition))
+				return false;
 			return true;
 		}
 	}
@@ -148,17 +178,17 @@ public class ExtractionModel {
 	 * The SQL-condition.
 	 */
 	private final String condition;
-	
-	/**
-	 * A limit for the number of subject-entities. (-1 for unlimited)
-	 */
-	public final long limit;
-	
+
 	/**
 	 * The restricted data-model to be used for extraction.
 	 */
 	public final DataModel dataModel;
-
+	
+	/**
+	 * Version.
+	 */
+	public final int[] version;
+	
 	/**
 	 * Constructor for empty restriction models.
 	 * 
@@ -166,10 +196,10 @@ public class ExtractionModel {
 	 */
 	public ExtractionModel(DataModel dataModel, ExecutionContext executionContext) {
 		this.dataModel = dataModel;
+		this.version = null;
 		subject = dataModel.getTables().iterator().hasNext()? dataModel.getTables().iterator().next() : null;
 		condition = "";
 		dataModel.setRestrictionModel(new RestrictionModel(dataModel, executionContext));
-		limit = -1;
 		dataModel.deriveFilters();
 	}
 
@@ -191,7 +221,8 @@ public class ExtractionModel {
 	 */
 	public ExtractionModel(URL modelURL, Map<String, String> sourceSchemaMapping, Map<String, String> parameters, ExecutionContext executionContext, boolean failOnMissingSubject) throws IOException {
 		String csvLocation = modelURL.toString();
-		List<CsvFile.Line> csv = new CsvFile(modelURL.openStream(), null, csvLocation, null).getLines();
+		CsvFile csvFile = new CsvFile(modelURL.openStream(), CsvFile.ALL_BLOCKS, csvLocation, null);
+		List<CsvFile.Line> csv = csvFile.getLines();
 		if (csv.isEmpty()) {
 			throw new RuntimeException(modelURL + "' is empty");
 		}
@@ -212,29 +243,21 @@ public class ExtractionModel {
 		if ("".equals(condition)) {
 			condition = "1=1";
 		}
-		long limit = 0;
-		if (!"".equals(subjectLine.cells.get(2))) {
-			try {
-				limit = Long.parseLong(subjectLine.cells.get(2));
-			} catch (NumberFormatException e) {
-				limit = 0;
-			}
-		}
+		subjectLimitDefinition = createLimitDefinition(subjectLine.cells.get(2), subjectLine.cells.get(3));
 		if (dataModel.getRestrictionModel() == null) {
 			dataModel.setRestrictionModel(new RestrictionModel(dataModel, executionContext));
 		}
 		try {
-			dataModel.getRestrictionModel().addRestrictionDefinition(modelURL, parameters);
+			dataModel.getRestrictionModel().addRestrictionDefinition(csvFile, csvLocation, parameters);
 		} catch (Exception e) {
 			throw new RuntimeException(location, e);
 		}
 		this.subject = subject;
 		this.condition = condition;
-		this.limit = limit;
 		this.dataModel = dataModel;
 
 		// read xml mapping
-		List<CsvFile.Line> xmlMapping = new CsvFile(modelURL.openStream(), "xml-mapping", csvLocation, null).getLines();
+		List<CsvFile.Line> xmlMapping = csvFile.getLines("xml-mapping");
 		for (CsvFile.Line xmLine: xmlMapping) {
 			location = subjectLine.location;
 			String name = xmLine.cells.get(0);
@@ -252,7 +275,7 @@ public class ExtractionModel {
 		}
 
 		// read upserts
-		List<CsvFile.Line> upserts = new CsvFile(modelURL.openStream(), "upserts", csvLocation, null).getLines();
+		List<CsvFile.Line> upserts = csvFile.getLines("upserts");
 		for (CsvFile.Line upsert: upserts) {
 			location = subjectLine.location;
 			String name = upsert.cells.get(0);
@@ -266,7 +289,7 @@ public class ExtractionModel {
 		}
 		
 		// read "exclude from deletion"
-		List<CsvFile.Line> excludes = new CsvFile(modelURL.openStream(), "exclude from deletion", csvLocation, null).getLines();
+		List<CsvFile.Line> excludes = csvFile.getLines("exclude from deletion");
 		for (CsvFile.Line excludesLine: excludes) {
 			location = subjectLine.location;
 			String name = excludesLine.cells.get(0);
@@ -280,14 +303,14 @@ public class ExtractionModel {
 		}
 		
 		// read export modus
-		List<CsvFile.Line> exportModusFile = new CsvFile(modelURL.openStream(), "export modus", csvLocation, null).getLines();
+		List<CsvFile.Line> exportModusFile = csvFile.getLines("export modus");
 		Iterator<CsvFile.Line> i = exportModusFile.iterator();
 		if (i.hasNext()) {
 			dataModel.setExportModus(i.next().cells.get(0));
 		}
 		
 		// read column mapping
-		List<CsvFile.Line> columnMappingFile = new CsvFile(modelURL.openStream(), "xml column mapping", csvLocation, null).getLines();
+		List<CsvFile.Line> columnMappingFile = csvFile.getLines("xml column mapping");
 		for (CsvFile.Line xmLine: columnMappingFile) {
 			String name = xmLine.cells.get(0);
 			String mapping = xmLine.cells.get(1);
@@ -300,7 +323,7 @@ public class ExtractionModel {
 		}
 		
 		// read filters
-		List<CsvFile.Line> filtersFile = new CsvFile(modelURL.openStream(), "filters", csvLocation, null).getLines();
+		List<CsvFile.Line> filtersFile = csvFile.getLines("filters");
 		for (CsvFile.Line xmLine: filtersFile) {
 			String name = xmLine.cells.get(0);
 			String column = xmLine.cells.get(1);
@@ -332,7 +355,7 @@ public class ExtractionModel {
 		}
 		
 		// read filter templates
-		List<CsvFile.Line> templatesFile = new CsvFile(modelURL.openStream(), "filter templates", csvLocation, null).getLines();
+		List<CsvFile.Line> templatesFile = csvFile.getLines("filter templates");
 		int lineNr = 0;
 		FilterTemplate template = null;
 		while (lineNr < templatesFile.size()) {
@@ -360,7 +383,7 @@ public class ExtractionModel {
 		}
 		
 		// read xml settings
-		List<CsvFile.Line> xmlSettingsFile = new CsvFile(modelURL.openStream(), "xml settings", csvLocation, null).getLines();
+		List<CsvFile.Line> xmlSettingsFile = csvFile.getLines("xml settings");
 		i = xmlSettingsFile.iterator();
 		if (i.hasNext()) {
 			List<String> cells = i.next().cells;
@@ -370,37 +393,85 @@ public class ExtractionModel {
 		}
 
 		// read version
-		int[] version = null;
-		List<CsvFile.Line> versionBlock = new CsvFile(modelURL.openStream(), "version", csvLocation, null).getLines();
+		List<CsvFile.Line> versionBlock = csvFile.getLines("version");
 		if (!versionBlock.isEmpty()) {
 			String vCell = versionBlock.get(0).cells.get(0);
 			String[] versionLine = vCell.split("[^0-9]+");
-			version = new int[Math.max(4, versionLine.length)];
+			int[] v = new int[Math.max(4, versionLine.length)];
 			int p = 0;
 			for (String number: versionLine) {
 				if (number.length() > 0) {
 					try {
-						version[p++] = Integer.parseInt(number);
+						v[p++] = Integer.parseInt(number);
 					} catch (NumberFormatException e) {
 						// version is unknown
-						version = null;
+						v = null;
 						break;
 					}
 				}
 			}
+			version = v;
+		} else {
+			version = null;
 		}
 		
 		// read additional subjects
-		List<CsvFile.Line> additionalSubsLines = new CsvFile(modelURL.openStream(), "additional subjects", csvLocation, null).getLines();
+		List<CsvFile.Line> additionalSubsLines = csvFile.getLines("additional subjects");
 		for (CsvFile.Line line: additionalSubsLines) {
 			Table additSubject = getTable(dataModel, SqlUtil.mappedSchema(sourceSchemaMapping, line.cells.get(0)));
 			if (additSubject != null) {
-				additionalSubjects.add(new AdditionalSubject(additSubject, line.cells.get(1)));
+				additionalSubjects.add(new AdditionalSubject(additSubject, line.cells.get(1), createLimitDefinition(line.cells.get(2), line.cells.get(3))));
 			}
 		}
 		
 		dataModel.deriveFilters();
-		disableUnknownAssociations(new CsvFile(modelURL.openStream(), "known", csvLocation, null).getLines());
+		disableUnknownAssociations(csvFile.getLines("known"));
+		
+		if (version != null) {
+			int v1 = version.length > 0? version[0] : 0;
+			int v2 = version.length > 1? version[1] : 0;
+			int v3 = version.length > 2? version[2] : 0;
+			int v4 = version.length > 3? version[3] : 0;
+			// < 9.5.4.6
+			if (v1 < 9 || (v1 == 9 && (v2 < 5 || (v2 == 5 && (v3 < 4 || (v3 == 4 && (v4 < 6))))))) {
+				migrateDisabledFKNullFilter();
+			}
+		}
+	}
+
+	private void migrateDisabledFKNullFilter() {
+		for (Table table: dataModel.getTables()) {
+			for (Association association: table.associations) {
+				if (association.isInsertDestinationBeforeSource() && association.isIgnored()) {
+					Map<Column, Column> sdMap = association.createSourceToDestinationKeyMapping();
+					boolean hasNullFilter = true;
+					for (Column c: sdMap.keySet()) {
+						if (c.getFilter() == null || !"null".equals(c.getFilter().getExpression())) {
+							hasNullFilter = false;
+							break;
+						}
+					}
+					if (hasNullFilter) {
+						for (Column c: sdMap.keySet()) {
+							c.setFilter(null);
+						}
+						association.setOrResetFKNullFilter(true);
+					}
+				}
+			}
+		}
+	}
+
+	private SubjectLimitDefinition createLimitDefinition(String limit, String orderBy) {
+		Long lLimit = null;
+		if (!"".equals(limit)) {
+			try {
+				lLimit = Long.parseLong(limit);
+			} catch (NumberFormatException e) {
+				lLimit = null;
+			}
+		}
+		return new SubjectLimitDefinition(lLimit, orderBy.length() == 0? null : orderBy);
 	}
 
 	private KnownIdentifierMap knownIdentifierMap;
@@ -438,7 +509,7 @@ public class ExtractionModel {
 			String name = a.reversed? a.reversalAssociation.getName() : a.getName();
 			if (!known.contains(name)) {
 				if (a.isInsertSourceBeforeDestination()) {
-					dataModel.getRestrictionModel().addRestriction(a.source, a, "false", "SYSTEM", true, new HashMap<String, String>());
+					dataModel.getRestrictionModel().addRestriction(a, "false", "SYSTEM", true, new HashMap<String, String>());
 				}
 				dataModel.decisionPending.add(name);
 			}

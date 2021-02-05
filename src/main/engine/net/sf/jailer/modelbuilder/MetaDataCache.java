@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package net.sf.jailer.modelbuilder;
 
-import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -33,10 +32,11 @@ import org.apache.log4j.Logger;
 import net.sf.jailer.configuration.DBMS;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.modelbuilder.MemorizedResultSet.MemorizedResultSetMetaData;
+import net.sf.jailer.util.LogUtil;
 
 /**
  * Reads database meta data directly from meta data views.
- * 
+ *
  * @author Wisser
  */
 public class MetaDataCache {
@@ -55,10 +55,10 @@ public class MetaDataCache {
 	 * Meta data of cached row set.
 	 */
 	private MemorizedResultSetMetaData resultSetMetaData;
-	
+
 	/**
 	 * Reads primary keys.
-	 * 
+	 *
 	 * @param session
 	 *            the session
 	 * @param schema
@@ -86,7 +86,7 @@ public class MetaDataCache {
 
 	/**
 	 * Reads index infos.
-	 * 
+	 *
 	 * @param session
 	 *            the session
 	 * @param schema
@@ -114,7 +114,7 @@ public class MetaDataCache {
 
 	/**
 	 * Reads imported keys (FKs).
-	 * 
+	 *
 	 * @param session
 	 *            the session
 	 * @param schema
@@ -142,23 +142,23 @@ public class MetaDataCache {
 
 	/**
 	 * Reads column infos.
-	 * 
+	 *
 	 * @param session
 	 *            the session
 	 * @param schema
 	 *            name of the schema
 	 * @return cache
 	 */
-	public static MetaDataCache readColumns(Session session, DatabaseMetaData metaData, String schema) {
+	public static MetaDataCache readColumns(Session session, String schema) {
 		_log.info("reading columns (may take some time)...");
 
 		MetaDataCache metaDataCache = new MetaDataCache();
 		ResultSet rs;
 		try {
 			if (DBMS.MySQL.equals(session.dbms)) {
-				rs = metaData.getColumns(schema, null, "%", "%");
+				rs = session.getMetaData().getColumns(schema, null, "%", "%");
 			} else {
-				rs = metaData.getColumns(null, schema, "%", "%");
+				rs = session.getMetaData().getColumns(null, schema, "%", "%");
 			}
 			Set<Integer> intIndex = new HashSet<Integer>(Arrays.asList(5, 7, 9, 10, 11, 14, 15, 16, 17, 22));
 
@@ -166,12 +166,14 @@ public class MetaDataCache {
 			ResultSetMetaData rsMetaData = rs.getMetaData();
 			int numCol = rsMetaData.getColumnCount();
 			String[] names = new String[numCol];
+			String[] typeNames = new String[numCol];
 			int[] types = new int[numCol];
 			for (int i = 0; i < numCol; ++i) {
 				names[i] = rsMetaData.getColumnName(i + 1);
 				types[i] = rsMetaData.getColumnType(i + 1);
+				typeNames[i] = ""; // not needed
 			}
-			
+
 			while (rs.next()) {
 				Object[] row = new Object[numCol];
 				for (int i = 1; i <= numCol; ++i) {
@@ -186,7 +188,7 @@ public class MetaDataCache {
 					}
 				}
 				String table = (String) row[2];
-				
+
 				List<Object[]> rowList = metaDataCache.cache.get(table);
 				if (rowList == null) {
 					rowList = new LinkedList<Object[]>();
@@ -194,7 +196,7 @@ public class MetaDataCache {
 				}
 				rowList.add(row);
 			}
-			metaDataCache.resultSetMetaData = new MemorizedResultSetMetaData(numCol, names, types); 
+			metaDataCache.resultSetMetaData = new MemorizedResultSetMetaData(numCol, names, types, typeNames);
 			rs.close();
 
 			if (metaDataCache.cache.isEmpty()) {
@@ -203,6 +205,8 @@ public class MetaDataCache {
 			return metaDataCache;
 		} catch (SQLException e) {
 			_log.info(e.getMessage());
+			LogUtil.warn(e);
+			session.reconnect();
 			return new MetaDataCache();
 		}
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.awt.Window;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.ObjectOutputStream;
+import java.util.Locale;
 import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeMap;
@@ -34,7 +35,7 @@ import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.modelbuilder.JDBCMetaDataBasedModelElementFinder;
 import net.sf.jailer.ui.DbConnectionDialog;
 import net.sf.jailer.ui.Environment;
-import net.sf.jailer.ui.JComboBox;
+import net.sf.jailer.ui.JComboBox2;
 import net.sf.jailer.ui.UIUtil;
 
 /**
@@ -46,7 +47,7 @@ public class SchemaMappingDialog extends javax.swing.JDialog {
 	private static final long serialVersionUID = 1L;
 	private String defaultSchemaName = "<default>";
 	private boolean ok = false;
-	private Map<String, JComboBox> comboboxes = new TreeMap<String, JComboBox>();
+	private Map<String, JComboBox2> comboboxes = new TreeMap<String, JComboBox2>();
 	
 	/** Creates new form SchemaMappingDialog 
 	 * @param mapping 
@@ -73,7 +74,7 @@ public class SchemaMappingDialog extends javax.swing.JDialog {
 			int y = 1;
 			for (String schema: modelSchemas) {
 				GridBagConstraints gridBagConstraints;
-				JComboBox comboBox = new JComboBox();
+				JComboBox2 comboBox = new JComboBox2();
 				comboBox.setModel(new javax.swing.DefaultComboBoxModel(dbSchemas.toArray()));
 				gridBagConstraints = new java.awt.GridBagConstraints();
 				gridBagConstraints.gridx = 2;
@@ -85,10 +86,10 @@ public class SchemaMappingDialog extends javax.swing.JDialog {
 				}
 				if (dbSchemas.contains(v)) {
 					comboBox.setSelectedItem(v);
-				} else if (dbSchemas.contains(v.toUpperCase())) {
-					comboBox.setSelectedItem(v.toUpperCase());
-				} else if (dbSchemas.contains(v.toLowerCase())) {
-					comboBox.setSelectedItem(v.toLowerCase());
+				} else if (dbSchemas.contains(v.toUpperCase(Locale.ENGLISH))) {
+					comboBox.setSelectedItem(v.toUpperCase(Locale.ENGLISH));
+				} else if (dbSchemas.contains(v.toLowerCase(Locale.ENGLISH))) {
+					comboBox.setSelectedItem(v.toLowerCase(Locale.ENGLISH));
 				} else {
 					comboBox.setSelectedItem(defaultSchemaName);
 				}
@@ -226,7 +227,7 @@ public class SchemaMappingDialog extends javax.swing.JDialog {
 	public Map<String, String> getMapping() {
 		if (ok) {
 			Map<String, String> mapping = new TreeMap<String, String>();
-			for (Map.Entry<String, JComboBox> e: comboboxes.entrySet()) {
+			for (Map.Entry<String, JComboBox2> e: comboboxes.entrySet()) {
 				String selection = (String) e.getValue().getSelectedItem();
 				if (defaultSchemaName.equals(selection)) {
 					selection = "";

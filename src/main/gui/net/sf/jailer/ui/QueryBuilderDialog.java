@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
-import java.awt.Image;
 import java.awt.Insets;
 import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
@@ -31,6 +30,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import javax.swing.BorderFactory;
@@ -551,12 +551,12 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 			gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
 			if (y == 0) {
 				label = new javax.swing.JLabel();
-				label.setText(y == 0 ? " From  " : " Join  ");
+				label.setText(" From  ");
 				label.setFont(nonBoldFont);
 
 				relationshipsPanel.add(label, gridBagConstraints);
 			} else if (relationship.association != null) {
-				JComboBox joinCB = new JComboBox();
+				JComboBox2 joinCB = new JComboBox2();
 				DefaultComboBoxModel aModel = new DefaultComboBoxModel(
 						JoinOperator.values());
 				joinCB.setModel(aModel);
@@ -585,9 +585,9 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 			gridBagConstraints.insets = new Insets(0,
 					0 + relationship.level * 12, 2, 0);
 			gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-			JComboBox tableCB = null;
+			JComboBox2 tableCB = null;
 			if (relationship != rootRelationship) {
-				tableCB = new JComboBox() {
+				tableCB = new JComboBox2() {
 					private boolean layingOut = false;
 
 					@Override
@@ -711,7 +711,7 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 				gridBagConstraints.insets = new Insets(0, 4, 0, 0);
 
 				minusLabel.setBorder(BorderFactory.createSoftBevelBorder(BevelBorder.RAISED));
-				final JComboBox combobox = tableCB;
+				final JComboBox2 combobox = tableCB;
 				minusLabel.addMouseListener(new java.awt.event.MouseAdapter() {
 					@Override
 					public void mouseEntered(java.awt.event.MouseEvent evt) {
@@ -793,7 +793,7 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 				relationshipsPanel.add(label, gridBagConstraints);
 
 				String alias = "";
-				if (relationship != null && relationship.aliasTextField != null) {
+				if (relationship.aliasTextField != null) {
 					alias = relationship.aliasTextField.getText();
 				}
 				JTextField aliasField = new JTextField(alias);
@@ -927,8 +927,8 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 								if (!unquote(tableC.getUnqualifiedName())
 										.equalsIgnoreCase(aName)) {
 									if (unquote(tableC.getUnqualifiedName())
-											.toLowerCase().startsWith(
-													as.toLowerCase())) {
+											.toLowerCase(Locale.ENGLISH).startsWith(
+													as.toLowerCase(Locale.ENGLISH))) {
 										unique = false;
 										break;
 									}
@@ -1465,23 +1465,9 @@ public class QueryBuilderDialog extends javax.swing.JDialog {
 	private ImageIcon joinImage = null;
 	private ImageIcon minusImage = null;
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-
 		// load image
-		try {
-			joinImage = new ImageIcon(new ImageIcon(getClass().getResource(
-					dir + "/collapsed.png")).getImage().getScaledInstance(22,
-					18, Image.SCALE_SMOOTH));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			minusImage = new ImageIcon(new ImageIcon(getClass().getResource(
-					dir + "/minus.png")).getImage().getScaledInstance(22, 18,
-					Image.SCALE_SMOOTH));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		joinImage = UIUtil.scaleIcon(UIUtil.readImage("/collapsed.png"), 22, 18);
+		minusImage = UIUtil.scaleIcon(UIUtil.readImage("/minus.png"), 22, 18);
 	}
 
 	private static final long serialVersionUID = -2801831496446636545L;

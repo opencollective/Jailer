@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -147,7 +147,7 @@ public abstract class ClosureBorderDialog extends javax.swing.JDialog {
 			Set<Table> closure = new HashSet<>();
 			for (Table root: roots) {
 				if (root != null) {
-					closure.addAll(root.closure(closure, true));
+					closure.addAll(root.closure(closure));
 				}
 			}
 			rootNameLabel.setText(datamodel.getDisplayName(roots.get(0)) + (roots.size() <= 1? "": (" and additional subjects (" + (roots.size() - 1) + ")")));

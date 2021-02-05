@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,23 +35,24 @@ import net.sf.jailer.util.LayoutStorage;
 
 /**
  * Execution context of import-/export commands.
- * 
+ *
  * @author Ralf Wisser
  */
 public class ExecutionContext {
-	
+
 	/**
 	 * Default constructor.
 	 */
 	public ExecutionContext() {
 	}
-	
+
 	/**
 	 * Copy constructor.
 	 */
 	public ExecutionContext(ExecutionContext other) {
 		this.schemaMapping = copy(other.schemaMapping);
 		this.sourceSchemaMapping = copy(other.sourceSchemaMapping);
+		this.deletionSchemaMapping = copy(other.deletionSchemaMapping);
 		this.scriptFormat = other.scriptFormat;
 		this.currentModelSubfolder = other.currentModelSubfolder;
 		this.datamodelURL = other.datamodelURL;
@@ -69,6 +70,7 @@ public class ExecutionContext {
 		this.analyseView = other.analyseView;
 		this.rawschemamapping = other.rawschemamapping;
 		this.rawsourceschemamapping = other.rawsourceschemamapping;
+		this.rawdeletionschemamapping = other.rawdeletionschemamapping;
 		this.parameters = copy(other.parameters);
 		this.numberOfThreads = other.numberOfThreads;
 		this.numberOfEntities = other.numberOfEntities;
@@ -79,23 +81,24 @@ public class ExecutionContext {
 		this.orderByPK = other.orderByPK;
 		this.transactional = other.transactional;
 		this.isolationLevel = other.isolationLevel;
-		this.noRowid = other.noRowid;
+		this.useRowid = other.useRowid;
+		this.useRowIdsOnlyForTablesWithoutPK = other.useRowIdsOnlyForTablesWithoutPK;
 		this.importFilterMappingTableSchema = other.importFilterMappingTableSchema;
 		this.scope = other.scope;
 		this.rawparameters = other.rawparameters;
 		this.embedded = other.embedded;
-		this.checkPrimaryKeys = other.checkPrimaryKeys;
 		this.insertIncrementally = other.insertIncrementally;
 		this.abortInCaseOfInconsistency = other.abortInCaseOfInconsistency;
 		this.independentWorkingTables = other.independentWorkingTables;
 		this.upkDomain = other.upkDomain;
 		this.currentConnectionAlias = other.currentConnectionAlias;
+		this.limit = other.limit;
 // don't share progressListenerRegistry, was: this.progressListenerRegistry = other.progressListenerRegistry;
 	}
 
 	/**
 	 * Creates new context with attributes taken from {@link ExecutionContext}.
-	 * 
+	 *
 	 * @param executionContext the command line
 	 */
 	public ExecutionContext(CommandLine commandLine) {
@@ -491,7 +494,7 @@ public class ExecutionContext {
 
 	/**
 	 * Gets IsolationLevel.
-	 * 
+	 *
 	 * @see Connection#setTransactionIsolation(int)
 	 */
 	public Integer getIsolationLevel() {
@@ -500,7 +503,7 @@ public class ExecutionContext {
 
 	/**
 	 * Sets IsolationLevel.
-	 * 
+	 *
 	 * @see Connection#setTransactionIsolation(int)
 	 */
 	public void setIsolationLevel(Integer isolationLevel) {
@@ -508,26 +511,45 @@ public class ExecutionContext {
 	}
 
 	/**
-	 * If <code>true</code>, Use primary keys to determine row identity (instead
-	 * of rowid-column)
+	 * If <code>true</code>, use rowid/ctid-column to determine row identity (instead
+	 * of primary keys)
 	 *
-	 * @return <code>true</code> if Use primary keys to determine row identity
-	 *         (instead of rowid-column)
+	 * @return if <code>true</code> use rowid/ctid-column to determine row identity
+	 *         (instead of primary keys)
 	 */
-	public boolean getNoRowid() {
-		return noRowid;
+	public boolean getUseRowid() {
+		return useRowid;
 	}
 
 	/**
-	 * If <code>true</code>, Use primary keys to determine row identity (instead
-	 * of rowid-column)
+	 * If <code>true</code>, use rowid/ctid-column to determine row identity (instead
+	 * of primary keys)
 	 *
-	 * @param noRowid
-	 *            <code>true</code> if Use primary keys to determine row
-	 *            identity (instead of rowid-column)
+	 * @param useRowid
+	 *            if <code>true</code> use rowid/ctid-column to determine row
+	 *            identity (instead of primary keys)
 	 */
-	public void setNoRowid(boolean noRowid) {
-		this.noRowid = noRowid;
+	public void setUseRowid(boolean useRowid) {
+		this.useRowid = useRowid;
+	}
+
+	/**
+	 * If <code>true</code>, use rowid/ctid-column only for tables without primary key.
+	 *
+	 * @return if <code>true</code> use rowid/ctid-column only for tables without primary key
+	 */
+	public boolean getUseRowIdsOnlyForTablesWithoutPK() {
+		return useRowIdsOnlyForTablesWithoutPK;
+	}
+
+	/**
+	 * If <code>true</code>, use rowid/ctid-column only for tables without primary key.
+	 *
+	 * @param useRowIdsOnlyForTablesWithoutPK
+	 *            if <code>true</code> use rowid/ctid-column only for tables without primary key
+	 */
+	public void setUseRowIdsOnlyForTablesWithoutPK(boolean useRowIdsOnlyForTablesWithoutPK) {
+		this.useRowIdsOnlyForTablesWithoutPK = useRowIdsOnlyForTablesWithoutPK;
 	}
 
 	/**
@@ -606,7 +628,7 @@ public class ExecutionContext {
 	public Map<String, String> getParameters() {
 		if (parameters == null) {
 			Map<String, String> map = new TreeMap<String, String>();
-			
+
 			if (rawparameters != null) {
 				for (String pv: CsvFile.decodeLine(rawparameters)) {
 					int i = pv.indexOf('=');
@@ -616,13 +638,13 @@ public class ExecutionContext {
 				}
 			}
 			parameters = map;
-		}	    	
+		}
 		return parameters;
 	}
-	
+
 	/**
 	 * Sets a parameter.
-	 * 
+	 *
 	 * @param name parameter name
 	 * @param value value
 	 */
@@ -644,7 +666,7 @@ public class ExecutionContext {
 		}
 		return mapping;
 	}
-	
+
 	public Map<String, String> getSchemaMapping() {
 		if (schemaMapping == null) {
 			schemaMapping = getSchemaMapping(rawschemamapping);
@@ -685,12 +707,40 @@ public class ExecutionContext {
 		}
 		return sourceSchemaMapping;
 	}
-	
+
+	private Map<String, String> deletionSchemaMapping;
+
+	/**
+	 * @param deletionSchemaMapping the sourceSchemaMapping to set
+	 */
+	public void setDeletionSchemaMapping(Map<String, String> deletionSchemaMapping) {
+		this.deletionSchemaMapping = deletionSchemaMapping;
+	}
+
+	public Map<String, String> getDeletionSchemaMapping() {
+		if (deletionSchemaMapping == null) {
+			deletionSchemaMapping = new HashMap<String, String>();
+			String rawmapping = rawdeletionschemamapping;
+			if (rawmapping == null) {
+				rawmapping = rawsourceschemamapping;
+			}
+			if (rawmapping != null) {
+				for (String item: rawmapping.split(",")) {
+					String[] fromTo = (" " + item + " ").split("=");
+					if (fromTo.length == 2) {
+						deletionSchemaMapping.put(fromTo[0].trim(), fromTo[1].trim());
+					}
+				}
+			}
+		}
+		return deletionSchemaMapping;
+	}
+
 	private ScriptFormat scriptFormat;
-	
+
 	/**
 	 * Gets the script format.
-	 * 
+	 *
 	 * @return the script format
 	 */
 	public ScriptFormat getScriptFormat() {
@@ -703,24 +753,24 @@ public class ExecutionContext {
 		}
 		return scriptFormat;
 	}
-	
+
 	/**
 	 * Sets the script format.
-	 * 
+	 *
 	 * @return the script format
 	 */
 	public void setScriptFormat(ScriptFormat scriptFormat) {
 		this.scriptFormat = scriptFormat;
 	}
-	
+
 	/**
 	 * Folder of current data model.
 	 */
 	private String currentModelSubfolder = null;
-	
+
 	/**
 	 * Sets folder of current data model.
-	 * 
+	 *
 	 * @param modelFolder the folder, <code>null</code> for default model
 	 */
 	public void setCurrentModelSubfolder(String modelFolder) {
@@ -729,7 +779,7 @@ public class ExecutionContext {
 
 	/**
 	 * Gets folder of current data model.
-	 * 
+	 *
 	 * @return modelFolder the folder, <code>null</code> for default model
 	 */
 	public String getCurrentModelSubfolder() {
@@ -772,7 +822,7 @@ public class ExecutionContext {
 			this.datamodelURL = datamodelURL;
 		}
 	}
-	
+
 	// use UTF-8 encoding
 	private boolean uTF8 = false;
 
@@ -817,6 +867,9 @@ public class ExecutionContext {
 	// source schema map
 	private String rawsourceschemamapping = null;
 
+	// source schema map
+	private String rawdeletionschemamapping = null;
+
 	// parameters
 	private Map<String, String> parameters = null;
 
@@ -834,7 +887,9 @@ public class ExecutionContext {
 	private String workingTableSchema = null;
 
 	// folder holding the data model. Defaults to './datamodel'
-	private String datamodelFolder = "datamodel";
+	private String datamodelFolder = defaultDatamodelFolder;
+
+	public static String defaultDatamodelFolder = "datamodel";
 
 	// the exported rows will not be sorted according to foreign key constraints
 	private boolean noSorting = false;
@@ -844,50 +899,62 @@ public class ExecutionContext {
 
 	// import rows in a single transaction
 	private boolean transactional = false;
-	
+
 	// isolation level
 	private Integer isolationLevel = null;
-	
-	// use primary keys to determine row identity (instead of rowid-column)
-	private boolean noRowid = false;
 
-	// Should the PKs be checked for validity?
-	private boolean checkPrimaryKeys = false;
-	
+	// use rowid-column to determine row identity (instead of primary keys)
+	private boolean useRowid = false;
+
+	// use rowid-column only for tables without primary key
+	private boolean useRowIdsOnlyForTablesWithoutPK = false;
+
 	// collects the rows using multiple insert operations with a limited number of rows per operation
 	private boolean insertIncrementally = false;
 
 	// abort the process if the result is inconsistent due to insufficient transaction isolation
 	private boolean abortInCaseOfInconsistency = false;
-	
+
 	// schema in which the import-filter mapping tables will be created
 	private String importFilterMappingTableSchema = "";
 
 	// create working tables that are independent of the extraction model. (Potentially less efficient)
 	private boolean independentWorkingTables = false;
-	
+
+	// maximum allowed number of exported rows. If this limit is exceeded, the export aborts with an error.
+	private Long limit;
+
 	private WorkingTableScope scope = WorkingTableScope.GLOBAL;
 
 	private String rawparameters;
-	
+
 	private boolean embedded = false;
 	private Set<String> upkDomain;
 
 	private String currentConnectionAlias;
-	
+
 	private ProgressListenerRegistry progressListenerRegistry = new ProgressListenerRegistry();
 
 	/**
 	 * Gets the {@link ProgressListenerRegistry}.
-	 * 
+	 *
 	 * @return the {@link ProgressListenerRegistry}
 	 */
 	public ProgressListenerRegistry getProgressListenerRegistry() {
 		return progressListenerRegistry;
 	}
 
+	/**
+	 * Sets the {@link ProgressListenerRegistry}.
+	 *
+	 * @param progressListenerRegistry the {@link ProgressListenerRegistry}
+	 */
+	public void setProgressListenerRegistry(ProgressListenerRegistry progressListenerRegistry) {
+		this.progressListenerRegistry = progressListenerRegistry;
+	}
+
 	private LayoutStorage layoutStorage = new LayoutStorage();
-	
+
 	public LayoutStorage getLayoutStorage() {
 		return layoutStorage;
 	}
@@ -897,19 +964,19 @@ public class ExecutionContext {
 	}
 
 	/**
-	 * Should the PKs be checked for validity?
+	 * @return maximum allowed number of exported rows. If this limit is exceeded, the export aborts with an error.
 	 */
-	public boolean getCheckPrimaryKeys() {
-		return checkPrimaryKeys;
+	public Long getLimit() {
+		return limit;
 	}
-	
+
 	/**
-	 * Should the PKs be checked for validity?
+	 * @param limit maximum allowed number of exported rows. If this limit is exceeded, the export aborts with an error.
 	 */
-	public void setCheckPrimaryKeys(boolean checkPrimaryKeys) {
-		this.checkPrimaryKeys = checkPrimaryKeys;
+	public void setLimit(Long limit) {
+		this.limit = limit;
 	}
-	
+
 	/**
 	 * Create working tables that are independent of the extraction model. (Potentially less efficient)
 	 */
@@ -955,6 +1022,7 @@ public class ExecutionContext {
 		analyseView = commandLine.analyseView;
 		rawschemamapping = commandLine.rawschemamapping;
 		rawsourceschemamapping = commandLine.rawsourceschemamapping;
+		rawdeletionschemamapping = commandLine.rawdeletionschemamapping;
 		rawparameters = commandLine.parameters;
 		numberOfThreads = commandLine.numberOfThreads;
 		numberOfEntities = commandLine.numberOfEntities;
@@ -975,11 +1043,18 @@ public class ExecutionContext {
 		independentWorkingTables = commandLine.independentWorkingTables;
 		transactional = commandLine.transactional;
 		isolationLevel = commandLine.isolationLevel;
-		noRowid = commandLine.noRowid;
+		useRowid = commandLine.useRowid;
+		useRowIdsOnlyForTablesWithoutPK = commandLine.useRowIdsOnlyForTablesWithoutPK;
 		importFilterMappingTableSchema = commandLine.importFilterMappingTableSchema;
-		checkPrimaryKeys = commandLine.checkPrimaryKeys;
 		insertIncrementally = commandLine.insertIncrementally;
 		abortInCaseOfInconsistency = commandLine.abortInCaseOfInconsistency;
+		limit = null;
+		if (commandLine.limit != null) {
+			String limitStr = commandLine.limit.trim();
+			if (!limitStr.isEmpty()) {
+				limit = Long.parseLong(commandLine.limit);
+			}
+		}
 	}
 
 	private Map<String, String> copy(Map<String, String> map) {

@@ -73,10 +73,18 @@
             </MenuItem>
             <MenuItem class="javax.swing.JMenuItem" name="exportDisplay">
               <Properties>
-                <Property name="text" type="java.lang.String" value="Export graph as image"/>
+                <Property name="text" type="java.lang.String" value="Export graph as image..."/>
               </Properties>
               <Events>
                 <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="exportDisplayActionPerformed"/>
+              </Events>
+            </MenuItem>
+            <MenuItem class="javax.swing.JMenuItem" name="exportDisplay1">
+              <Properties>
+                <Property name="text" type="java.lang.String" value="Export graph as image map"/>
+              </Properties>
+              <Events>
+                <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="exportDisplay1ActionPerformed"/>
               </Events>
             </MenuItem>
             <MenuItem class="javax.swing.JSeparator" name="jSeparator2">
@@ -111,7 +119,7 @@
         </Menu>
         <Menu class="javax.swing.JMenu" name="jMenu1">
           <Properties>
-            <Property name="text" type="java.lang.String" value="DataModel"/>
+            <Property name="text" type="java.lang.String" value="Model"/>
           </Properties>
           <SubComponents>
             <MenuItem class="javax.swing.JMenuItem" name="updateDataModel">
@@ -134,7 +142,7 @@
             </MenuItem>
             <MenuItem class="javax.swing.JMenuItem" name="columnOrderItem">
               <Properties>
-                <Property name="text" type="java.lang.String" value="Column Ordering"/>
+                <Property name="text" type="java.lang.String" value="Define Column Order"/>
               </Properties>
               <Events>
                 <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="columnOrderItemActionPerformed"/>
@@ -173,6 +181,14 @@
               <AuxValues>
                 <AuxValue name="JavaCodeGenerator_VariableModifier" type="java.lang.Integer" value="0"/>
               </AuxValues>
+            </MenuItem>
+            <MenuItem class="javax.swing.JMenuItem" name="consistencyCheckMenuItem1">
+              <Properties>
+                <Property name="text" type="java.lang.String" value="Check Referential Consistency"/>
+              </Properties>
+              <Events>
+                <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="consistencyCheckMenuItem1ActionPerformed"/>
+              </Events>
             </MenuItem>
           </SubComponents>
         </Menu>
@@ -398,10 +414,26 @@
             </MenuItem>
             <MenuItem class="javax.swing.JMenuItem" name="renderHtml">
               <Properties>
-                <Property name="text" type="java.lang.String" value="HTML Rendering"/>
+                <Property name="text" type="java.lang.String" value="HTML Renderer"/>
               </Properties>
               <Events>
                 <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="renderHtmlActionPerformed"/>
+              </Events>
+            </MenuItem>
+            <MenuItem class="javax.swing.JMenuItem" name="renderHtml1">
+              <Properties>
+                <Property name="text" type="java.lang.String" value="HTML Renderer (with graphic)"/>
+              </Properties>
+              <Events>
+                <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="renderHtml1ActionPerformed"/>
+              </Events>
+            </MenuItem>
+            <MenuItem class="javax.swing.JMenuItem" name="consistencyCheckMenuItem">
+              <Properties>
+                <Property name="text" type="java.lang.String" value="Referential Consistency Check"/>
+              </Properties>
+              <Events>
+                <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="consistencyCheckMenuItemActionPerformed"/>
               </Events>
             </MenuItem>
             <MenuItem class="javax.swing.JMenuItem" name="createCLIItem">

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -212,9 +213,9 @@ public class SqlScriptExecutor {
 		
 		if (uTF8 != null) {
 			// retrieve encoding
-			if (scriptFileName.toLowerCase().endsWith(".gz")) {
+			if (scriptFileName.toLowerCase(Locale.ENGLISH).endsWith(".gz")) {
 				bufferedReader = new BufferedReader(new InputStreamReader(new GZIPInputStream(inputStream), uTF8), 1);
-			} else if (scriptFileName.toLowerCase().endsWith(".zip")) {
+			} else if (scriptFileName.toLowerCase(Locale.ENGLISH).endsWith(".zip")) {
 				ZipInputStream zis = new ZipInputStream(new FileInputStream(scriptFileName));
 				zis.getNextEntry();
 				bufferedReader = new BufferedReader(new InputStreamReader(zis, uTF8), 1);
@@ -249,9 +250,9 @@ public class SqlScriptExecutor {
 		};
 		bytesRead[0] = 0;
 		fileSize = file.length();
-		if (scriptFileName.toLowerCase().endsWith(".gz")) {
+		if (scriptFileName.toLowerCase(Locale.ENGLISH).endsWith(".gz")) {
 			bufferedReader = new BufferedReader(new InputStreamReader(new GZIPInputStream(inputStream), encoding));
-		} else if (scriptFileName.toLowerCase().endsWith(".zip")){
+		} else if (scriptFileName.toLowerCase(Locale.ENGLISH).endsWith(".zip")){
 			ZipInputStream zis = new ZipInputStream(inputStream);
 			zis.getNextEntry();
 			bufferedReader = new BufferedReader(new InputStreamReader(zis, encoding));
@@ -287,7 +288,7 @@ public class SqlScriptExecutor {
 							p = 999;
 						}
 					}
-					_log.info(linesRead + " statements" + (p >= 0? " (" + String.format("%1.1f", p / 10.0) + "%)" : ""));
+					_log.info(linesRead + " statements" + (p >= 0? " (" + String.format(Locale.ENGLISH, "%1.1f", p / 10.0) + "%)" : ""));
 				}
 			}
 		};
@@ -345,7 +346,7 @@ public class SqlScriptExecutor {
 					execute(new Runnable() {
 						@Override
 						public void run() {
-							boolean startsWithDrop = stmt.trim().toLowerCase().startsWith("drop");
+							boolean startsWithDrop = stmt.trim().toLowerCase(Locale.ENGLISH).startsWith("drop");
 							boolean silent = session.getSilent();
 							session.setSilent(silent || finalTryMode || startsWithDrop);
 							boolean oldLogStatements = session.getLogStatements();
@@ -367,7 +368,7 @@ public class SqlScriptExecutor {
 										}
 									}
 									if (!done) {
-										rc = session.execute(stmt);
+										rc = session.execute(stmt, null, true);
 									}
 									totalRowCount.addAndGet(rc);
 									linesRead.getAndIncrement();
@@ -385,7 +386,7 @@ public class SqlScriptExecutor {
 								// drop may fail
 								if (!finalTryMode && !startsWithDrop) {
 									// fix for bug [2946477]
-									if (!stmt.trim().toUpperCase().contains("DROP TABLE JAILER_DUAL")) {
+									if (!stmt.trim().toUpperCase(Locale.ENGLISH).contains("DROP TABLE JAILER_DUAL")) {
 										Session._log.warn(stmt, e);
 										if (e instanceof SqlException) {
 											((SqlException) e).setInsufficientPrivileges(count.get() == 0);

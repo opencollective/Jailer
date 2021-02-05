@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 
 /**
@@ -159,7 +160,7 @@ public class DatabaseObjectRenderingDescription {
 			ImageIcon icon = icons.get(getIconURL());
 			if (icon == null) {
 				try {
-		            icon = new ImageIcon(DatabaseObjectRenderingDescription.class.getResource(getIconURL()));
+		            icon = new ImageIcon(ImageIO.read(DatabaseObjectRenderingDescription.class.getResource(getIconURL())));
 		        } catch (Exception e) {
 		        }
 			}

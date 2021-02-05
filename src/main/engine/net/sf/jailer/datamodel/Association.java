@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,12 @@
 package net.sf.jailer.datamodel;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import net.sf.jailer.restrictionmodel.RestrictionModel;
 import net.sf.jailer.util.Pair;
@@ -29,7 +31,7 @@ import net.sf.jailer.util.SqlUtil;
 
 /**
  * An association between database-tables.
- * 
+ *
  * @author Ralf Wisser
  */
 public class Association extends ModelElement {
@@ -103,7 +105,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param source
 	 *            the source table
 	 * @param destination
@@ -132,7 +134,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param source
 	 *            the source table
 	 * @param destination
@@ -173,7 +175,7 @@ public class Association extends ModelElement {
 	/**
 	 * Gets the restricted join-condition for joining source with destination
 	 * table.
-	 * 
+	 *
 	 * @return the restricted join-condition for joining source with destination
 	 *         table, <code>null</code> if association must be ignored
 	 */
@@ -192,7 +194,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Is this association ignored?
-	 * 
+	 *
 	 * @return <code>true</code> iff this association is ignored
 	 */
 	public boolean isIgnored() {
@@ -209,7 +211,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Gets the cardinality.
-	 * 
+	 *
 	 * @return the cardinality. <code>null</code> if cardinality is not known.
 	 */
 	public Cardinality getCardinality() {
@@ -259,7 +261,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Stringifies the join condition.
-	 * 
+	 *
 	 * @param restrictionSeparator
 	 *            separates join-condition from restriction condition in the
 	 *            result
@@ -284,7 +286,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Gets join-condition without any restrictions.
-	 * 
+	 *
 	 * @return join-condition as defined in data model
 	 */
 	public String getUnrestrictedJoinCondition() {
@@ -293,7 +295,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Gets restriction-condition.
-	 * 
+	 *
 	 * @return restriction-condition, <code>null</code> if association is not
 	 *         restricted
 	 */
@@ -309,7 +311,10 @@ public class Association extends ModelElement {
 					r = SqlUtil.reversRestrictionCondition(r);
 				}
 				if (r.startsWith("(") && r.endsWith(")")) {
-					r = r.substring(1, r.length() - 1);
+					String rWOParentheses = r.substring(1, r.length() - 1);
+					if (checkParentheses(r) && checkParentheses(rWOParentheses)) {
+						r = rWOParentheses;
+					}
 				}
 				return r;
 			}
@@ -317,9 +322,25 @@ public class Association extends ModelElement {
 		return null;
 	}
 
+	private static boolean checkParentheses(String condition) {
+		int level = 0;
+		for (int i = 0; i < condition.length(); ++i) {
+			char c = condition.charAt(i);
+			if (c == '(') {
+				++level;
+			} else if (c == ')') {
+				--level;
+				if (level < 0) {
+					return false;
+				}
+			}
+		}
+		return level == 0;
+	}
+
 	/**
 	 * Sets the name of the association.
-	 * 
+	 *
 	 * @param name
 	 *            the name of the association
 	 */
@@ -332,7 +353,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Gets the name of the association.
-	 * 
+	 *
 	 * @return the name of the association
 	 */
 	public String getName() {
@@ -342,7 +363,7 @@ public class Association extends ModelElement {
 	/**
 	 * Whether or not to insert source-rows before destination rows in order to
 	 * prevent foreign-key-constraint violation.
-	 * 
+	 *
 	 * @return the insertSourceBeforeDestination
 	 */
 	public boolean isInsertSourceBeforeDestination() {
@@ -355,7 +376,7 @@ public class Association extends ModelElement {
 	/**
 	 * Whether or not to insert destination-rows before source-rows in order to
 	 * prevent foreign-key-constraint violation.
-	 * 
+	 *
 	 * @return the insertDestinationBeforeSource
 	 */
 	public boolean isInsertDestinationBeforeSource() {
@@ -382,7 +403,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Appends condition to join-condition.
-	 * 
+	 *
 	 * @param condition
 	 *            the condition
 	 */
@@ -396,7 +417,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Gets the XML aggregation schema.
-	 * 
+	 *
 	 * @return the XML aggregation schema
 	 */
 	public AggregationSchema getAggregationSchema() {
@@ -405,16 +426,16 @@ public class Association extends ModelElement {
 
 	/**
 	 * Gets name of XML-tag used for aggregation.
-	 * 
+	 *
 	 * @return name of XML-tag used for aggregation
 	 */
 	public String getAggregationTagName() {
 		String tag;
 		if (aggregationTagName == null) {
 			if (name.startsWith("inverse-")) {
-				tag = destination.getUnqualifiedName().toLowerCase();
+				tag = destination.getUnqualifiedName().toLowerCase(Locale.ENGLISH);
 			} else {
-				tag = name.toLowerCase();
+				tag = name.toLowerCase(Locale.ENGLISH);
 			}
 		} else {
 			tag = aggregationTagName;
@@ -432,7 +453,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Sets the XML aggregation schema.
-	 * 
+	 *
 	 * @param aggregationSchema
 	 *            the XML aggregation schema
 	 */
@@ -445,7 +466,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Sets name of XML-tag used for aggregation.
-	 * 
+	 *
 	 * @param aggregationTagName
 	 *            name of XML-tag used for aggregation
 	 */
@@ -458,7 +479,7 @@ public class Association extends ModelElement {
 
 	/**
 	 * Gets unique ID.
-	 * 
+	 *
 	 * @return unique ID
 	 */
 	public int getId() {
@@ -478,7 +499,7 @@ public class Association extends ModelElement {
 	/**
 	 * Maps source-columns to destination-columns, if this represents an
 	 * equi-join. Otherwise it returns an empty map.
-	 * 
+	 *
 	 * @return map from source-columns to destination-columns, if this
 	 *         represents an equi-join
 	 */
@@ -489,16 +510,16 @@ public class Association extends ModelElement {
 	/**
 	 * Maps source-columns to destination-columns, if this represents an
 	 * equi-join. Otherwise it returns an empty map.
-	 * 
+	 *
 	 * @param assignments if not <code>null</code>, put column assignments into it
-	 * 
+	 *
 	 * @return map from source-columns to destination-columns, if this
 	 *         represents an equi-join
 	 */
 	public Map<Column, Column> createSourceToDestinationKeyMapping(Set<Pair<Column, Column>> assignments) {
 		String[] equations = getUnrestrictedJoinCondition().replaceAll("\\(|\\)", " ").trim()
 				.split("\\s*\\b(a|A)(n|N)(d|D)\\b\\s*");
-		Map<Column, Column> mapping = new HashMap<Column, Column>();
+		Map<Column, Column> mapping = new LinkedHashMap<Column, Column>();
 		Set<Column> destinationColumns = new HashSet<Column>();
 		boolean isValid = true;
 		for (String equation: equations) {
@@ -530,7 +551,7 @@ public class Association extends ModelElement {
 
 			sColumn = Quoting.normalizeIdentifier(sColumn);
 			dColumn = Quoting.normalizeIdentifier(dColumn);
-			
+
 			if (reversed) {
 				String h = sColumn;
 				sColumn = dColumn;
@@ -573,6 +594,17 @@ public class Association extends ModelElement {
 		}
 	}
 
+	public static final String NULL_FILTER_COMMENT_PREFIX = "foreign key to ";
+	private static final Pattern NULL_FILTER_PATTERN = Pattern.compile("(?i:\\s*(/\\*.*\\*/\\s*)?null(\\s*/\\*.*\\*/)?)\\s*");
+
+	private boolean isNullFilter(Filter filter) {
+		return filter.getExpression() != null
+				&&
+				((filter.isApplyAtExport() && NULL_FILTER_PATTERN.matcher(filter.getExpression()).matches())
+				||
+				Filter.EXCLUDED_VALUE.equals(filter.getExpression()));
+	}
+
 	public boolean hasNullableFK() {
 		if (!isInsertDestinationBeforeSource()) {
 			return false;
@@ -585,7 +617,7 @@ public class Association extends ModelElement {
 			if (!c.isNullable) {
 				return false;
 			}
-			if (c.getFilter() != null && !c.getFilter().isDerived() && !c.getFilter().isNullFilter()) {
+			if (c.getFilter() != null && !c.getFilter().isDerived() && !isNullFilter(c.getFilter())) {
 				return false;
 			}
 			for (Column pk: source.primaryKey.getColumns()) {
@@ -600,7 +632,17 @@ public class Association extends ModelElement {
 	public boolean fkHasNullFilter() {
 		Map<Column, Column> sdMap = createSourceToDestinationKeyMapping();
 		for (Column c: sdMap.keySet()) {
-			if (c.getFilter() == null || !c.getFilter().isNullFilter()) {
+			if (c.getFilter() == null || !isNullFilter(c.getFilter())) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public boolean fkHasExcludeFilter() {
+		Map<Column, Column> sdMap = createSourceToDestinationKeyMapping();
+		for (Column c: sdMap.keySet()) {
+			if (c.getFilter() == null || !Filter.EXCLUDED_VALUE.equals(c.getFilter().getExpression())) {
 				return false;
 			}
 		}
@@ -612,20 +654,30 @@ public class Association extends ModelElement {
 		Map<Column, Column> sdMap = createSourceToDestinationKeyMapping();
 		for (Column c: sdMap.keySet()) {
 			if (set) {
-				if (c.getFilter() == null || !"null".equals(c.getFilter().getExpression())) {
+				if (c.getFilter() == null || !isNullFilter(c.getFilter())) {
+					c.setFilter(new Filter("null /* " + NULL_FILTER_COMMENT_PREFIX + getName() + " */", null, false, null));
 					changed = true;
 				}
-				c.setFilter(new Filter("null", null, false, null));
 			} else {
 				if (c.getFilter() != null) {
+					c.setFilter(null);
 					changed = true;
 				}
-				c.setFilter(null);
 			}
 		}
 		getDataModel().deriveFilters();
 		getDataModel().version++;
 		return changed;
+	}
+
+	public boolean isRestrictedDependencyWithNulledFK() {
+		boolean restrictedDep = isInsertDestinationBeforeSource() && getRestrictionCondition() != null;
+		if (restrictedDep) {
+			if (fkHasNullFilter() && hasNullableFK() && !fkHasExcludeFilter()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 }

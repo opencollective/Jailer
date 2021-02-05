@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ import net.sf.jailer.ui.databrowser.BrowserContentPane;
 import net.sf.jailer.ui.databrowser.BrowserContentPane.LoadJob;
 import net.sf.jailer.ui.databrowser.BrowserContentPane.RowsClosure;
 import net.sf.jailer.ui.databrowser.Desktop;
+import net.sf.jailer.ui.databrowser.Desktop.FindClosureContext;
 import net.sf.jailer.ui.databrowser.Desktop.RowBrowser;
 import net.sf.jailer.ui.databrowser.Row;
 import net.sf.jailer.ui.databrowser.sqlconsole.SQLConsole;
@@ -218,7 +219,7 @@ public class ResultSetRenderer extends javax.swing.JPanel {
             return new ArrayList<RowBrowser>();
         }
         @Override
-        protected void findClosure(Row row, Set<Pair<BrowserContentPane, Row>> closure, boolean forward) {
+        protected void findClosure(Row row, Set<Pair<BrowserContentPane, Row>> closure, boolean forward, FindClosureContext findClosureContext) {
         }
         @Override
         protected void findClosure(Row row) {}
@@ -263,6 +264,6 @@ public class ResultSetRenderer extends javax.swing.JPanel {
 		@Override
 		protected void deselectChildrenIfNeededWithoutReload() {
 		}
-    };
+    }
 
 }

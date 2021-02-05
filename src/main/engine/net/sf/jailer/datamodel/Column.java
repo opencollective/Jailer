@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package net.sf.jailer.datamodel;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,7 +25,7 @@ import net.sf.jailer.util.SqlUtil;
 
 /**
  * Column of a table.
- * 
+ *
  * @author Ralf Wisser
  */
 public class Column {
@@ -33,17 +34,17 @@ public class Column {
 	 * The name.
 	 */
 	public final String name;
-	
+
 	/**
 	 * The type.
 	 */
 	public final String type;
-	
+
 	/**
 	 * The length (for VARCHAR, DECIMAL, ...) or <code>0</code> if type-length is not variable.
 	 */
 	public final int length;
-	
+
 	/**
 	 * The precision (for DECIMAL, NUMBER ...) or <code>-1</code> if precision is not variable.
 	 */
@@ -58,20 +59,20 @@ public class Column {
 	 * <code>true</code> if column is virtual.
 	 */
 	public boolean isVirtual = false;
-	
+
 	/**
 	 * <code>true</code> if column is nullable.
 	 */
 	public boolean isNullable = false;
-	
+
 	/**
 	 * SQL Expression for server-side column data filtering.
 	 */
 	private Filter filter = null;
-	
+
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param name the name (upper-case)
 	 * @param type the type (in SQL)
 	 * @param length the length (for VARCHAR, DECIMAL, ...) or <code>0</code> if type-length is not variable
@@ -87,7 +88,7 @@ public class Column {
 	/**
 	 * Gets SQL expression for server-side column data filtering.
 	 * {@link Filter#OLD_VALUE_PROP} is replaced by column name.
-	 * 
+	 *
 	 * @return SQL expression for server-side column data filtering
 	 *         or <code>null</code>, if no filter is defined for this column
 	 */
@@ -104,49 +105,49 @@ public class Column {
 
 	/**
 	 * Gets filter for server-side column data filtering.
-	 * 
+	 *
 	 * @return filter for server-side column data filtering
 	 *        or <code>null</code>, if no filter is defined for this column
 	 */
 	public Filter getFilter() {
 		return filter;
 	}
-	
+
 	/**
 	 * Sets filter for server-side column data filtering.
-	 * 
+	 *
 	 * @param filterExpression SQL expression for server-side column data filtering
 	 *        or <code>null</code>, if no filter is defined for this column
 	 */
 	public void setFilter(Filter filter) {
 		this.filter = filter;
 	}
-	
+
 
 	private static Pattern typeWithSizeAndPrecision = Pattern.compile("([^ ]+) +([^ \\(]+) *\\( *([0-9]+) *, *([0-9]+) *\\)");
-	private static Pattern typeWithSize = Pattern.compile("([^ ]+) +([^ \\(]+) *\\( *([0-9]+) *\\)");
+	private static Pattern typeWithSize = Pattern.compile("([^ ]+) +([^ \\(]+) *\\( *([0-9]+|max) *\\)");
 	private static Pattern typeWithoutSize = Pattern.compile("([^ ]+) +([^ \\(]+)");
-	
+
 	/**
 	 * Parses a column declaration in SQL syntax.
-	 * 
+	 *
 	 * @param columnDeclaration the column declaration in SQL syntax
 	 * @return the column
 	 */
 	public static Column parse(String columnDeclaration) {
 		return parse(null, columnDeclaration);
 	}
-	
+
 	/**
 	 * Parses a column declaration in SQL syntax.
-	 * 
+	 *
 	 * @param theColumnDeclaration the column declaration in SQL syntax
 	 * @param columnName (optional) name of column
 	 * @return the column
 	 */
 	public static Column parse(String columnName, String theColumnDeclaration) {
 		String columnDeclaration = theColumnDeclaration.trim();
-		
+
 		// work-around for bug 2849047
 		String normalizedcolumnDeclaration = PATTERN_IDENTITY.matcher(columnDeclaration).replaceFirst("");
 		if (!normalizedcolumnDeclaration.equals(columnDeclaration)) {
@@ -160,21 +161,21 @@ public class Column {
 		if (!normalizedcolumnDeclaration.equals(columnDeclaration)) {
 			columnDeclaration = normalizedcolumnDeclaration + " null";
 		}
-		
+
 		boolean isNullable = false;
-		if (columnDeclaration.toLowerCase().endsWith(" null")) {
+		if (columnDeclaration.toLowerCase(Locale.ENGLISH).endsWith(" null")) {
 			isNullable = true;
 			columnDeclaration = columnDeclaration.substring(0, columnDeclaration.length() - 5).trim();
 		}
 
 		boolean isVirtual = false;
-		if (columnDeclaration.toLowerCase().endsWith(" virtual")) {
+		if (columnDeclaration.toLowerCase(Locale.ENGLISH).endsWith(" virtual")) {
 			isVirtual = true;
 			columnDeclaration = columnDeclaration.substring(0, columnDeclaration.length() - 8).trim();
 		}
-		
+
 		boolean isIdent = false;
-		if (columnDeclaration.toLowerCase().endsWith(" identity")) {
+		if (columnDeclaration.toLowerCase(Locale.ENGLISH).endsWith(" identity")) {
 			isIdent = true;
 			columnDeclaration = columnDeclaration.substring(0, columnDeclaration.length() - 9).trim();
 		}
@@ -199,7 +200,7 @@ public class Column {
 				columnDeclaration = sb.toString();
 			}
 		}
-		
+
 		String name, type;
 		int size = 0;
 		int precision = -1;
@@ -214,7 +215,7 @@ public class Column {
 			if (matcher.matches()) {
 				name = matcher.group(1);
 				type = matcher.group(2);
-				size = Integer.parseInt(matcher.group(3));
+				size = "max".equalsIgnoreCase(matcher.group(3))? Integer.MAX_VALUE : Integer.parseInt(matcher.group(3));
 			} else {
 				matcher = typeWithoutSize.matcher(columnDeclaration);
 				if (matcher.matches()) {
@@ -234,7 +235,7 @@ public class Column {
 		column.isVirtual = isVirtual;
 		return column;
 	}
-	
+
 	/**
 	 * Compares two columns.
 	 */
@@ -255,7 +256,7 @@ public class Column {
 
 	/**
 	 * Returns the primary key in SQL syntax.
-	 * 
+	 *
 	 * @param columnPrefix an optional prefix for each PK-column
 	 * @param typeReplacement column types replacements
 	 */
@@ -264,22 +265,22 @@ public class Column {
 		if (typeReplacement != null && typeReplacement.containsKey(theType)) {
 			theType = typeReplacement.get(theType);
 		}
-		return (columnPrefix == null? "": columnPrefix) + name + " " + theType + (length == 0? "" : 
+		return (columnPrefix == null? "": columnPrefix) + name + " " + theType + (length == 0? "" : length == Integer.MAX_VALUE? "(max)" :
 			"(" + length + (precision >= 0? ", " + precision : "") + ")");
 	}
 
 	/**
 	 * Returns the column definition in SQL syntax.
-	 * 
+	 *
 	 * @param columnPrefix an optional prefix for the column name
 	 */
 	public String toSQL(String columnPrefix) {
 		return toSQL(columnPrefix, null);
 	}
-	
+
 	/**
 	 * Returns a string representation of the column.
-	 */ 
+	 */
 	@Override
 	public String toString() {
 		return toSQL(null);
@@ -287,7 +288,7 @@ public class Column {
 
 	/**
 	 * Returns <code>true</code> iff this column cannot be updated.
-	 * 
+	 *
 	 * @return <code>true</code> iff this column cannot be updated
 	 */
 	public boolean isVirtual() {

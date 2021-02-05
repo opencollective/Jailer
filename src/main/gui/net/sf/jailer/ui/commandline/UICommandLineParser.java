@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.kohsuke.args4j.CmdLineParser;
+
+import net.sf.jailer.CommandLineParser;
+import net.sf.jailer.ui.UIUtil;
 
 /**
  * Parser for {@link UICommandLine}.
@@ -38,7 +42,9 @@ public class UICommandLineParser {
 	public static UICommandLine parse(String[] args, boolean silent) throws Exception {
 		UICommandLine commandLine = new UICommandLine();
 		try {
+			args = CommandLineParser.preprocessFileLookup(args);
 			List<String> theArgs = new ArrayList<String>();
+			StringBuilder allArgs = new StringBuilder(UIUtil.LINE_SEPARATOR + "Arguments: ");
 			
 			final String ESC_PREFIX = "((!JAILER_MINUS_ESC!!)";
 
@@ -51,6 +57,18 @@ public class UICommandLineParser {
 					theArgs.add(arg);
 				}
 				++i;
+			}
+			if (args.length > 0) {
+				i = 0;
+				while (i < args.length) {
+					String arg = args[i];
+					if (i > 0) {
+						allArgs.append(", ");
+					}
+					allArgs.append(" " + i + ": {" + arg + "}");
+					++i;
+				}
+				allArgs.append(UIUtil.LINE_SEPARATOR);
 			}
 
 			CmdLineParser cmdLineParser = new CmdLineParser(commandLine);
@@ -65,10 +83,10 @@ public class UICommandLineParser {
 			}
 			commandLine.arguments = escapedWords;
 			if (commandLine.arguments.size() > 1) {
-				throw new RuntimeException("Illegal arguments " + commandLine.arguments);
+				throw new RuntimeException("Illegal arguments " + commandLine.arguments + allArgs);
 			}
-			if (commandLine.arguments.size() == 1 && !commandLine.arguments.get(0).toLowerCase().endsWith(".jm")) {
-				throw new RuntimeException("'" + commandLine.arguments.get(0) + "' is not a valid extraction model file.");
+			if (commandLine.arguments.size() == 1 && !commandLine.arguments.get(0).toLowerCase(Locale.ENGLISH).endsWith(".jm")) {
+				throw new RuntimeException("'" + commandLine.arguments.get(0) + "' is not a valid extraction model file." + allArgs);
 			}
 			if (commandLine.datamodelFolder == null && commandLine.arguments.isEmpty()) {
 				commandLine.url = null;
@@ -87,12 +105,18 @@ public class UICommandLineParser {
 	 * Prints out usage.
 	 */
 	public static void printUsage(PrintStream out) {
+		String cmd = "sh jailerGUI.sh";
+		String cmdDB = "sh jailerDataBrowser.sh";
+		if (System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH).startsWith("windows")) {
+			cmd = "jailerGUI.bat";
+			cmdDB = "jailerDataBrowser.bat";
+		}
 		out.println("usage:");
-		out.println("  jailerGUI.(sh|bat) [<extraction model *.jm] [-datamodel <data model>] [-jdbcjar <jdbc-jar>] [-driver driver class name] [-url <jdbc-url>] [-user <db-user>] [-password <db-password>]");
+		out.println("  " + cmd + " [<extraction model *.jm] [-datamodel <data model>] [-jdbcjar <jdbc-jar>] [-driver driver class name] [-url <jdbc-url>] [-user <db-user>] [-password <db-password>]");
 		out.println("    Starts the Extraction Model Editor with default database connection and/or data model.\n" + 
 						   "    Loads the possibly specified extraction model.");
 		out.println();
-		out.println("  jailerDataBrowser.(sh|bat) -datamodel <data model> [-jdbcjar <jdbc-jar>] [-driver driver class name] [-url <jdbc-url>] [-user <db-user>] [-password <db-password>] [-schemamapping <mapping>] [-bookmark <name>]");
+		out.println("  " + cmdDB + " -datamodel <data model> [-jdbcjar <jdbc-jar>] [-driver driver class name] [-url <jdbc-url>] [-user <db-user>] [-password <db-password>] [-schemamapping <mapping>] [-bookmark <name>]");
 		out.println("    Starts the Data Browser with default database connection and/or data model.\n");
 		out.println("    Opens a bookmark (If the -bookmark option is specified).\n");
 		out.println();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -271,7 +272,7 @@ public class MDDescriptionBasedGeneric extends MDGeneric {
             if (parentName != null) {
             	parentName = Quoting.staticUnquote(parentName);
             }
-            ResultSet rs = cStmt.executeQuery(String.format(query, schema, parentName));
+            ResultSet rs = cStmt.executeQuery(String.format(Locale.ENGLISH, query, schema, parentName));
             MemorizedResultSet result = new MemorizedResultSet(rs, null, session, schema);
             rs.close();
             return result;

@@ -1,6 +1,6 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-  
+
   <title>Jailer - Filters</title>
   <meta http-equiv="Content-Type" content="text/html; charset=us-ascii" />
   <meta name="description" content="Data Export Tool" />
@@ -128,8 +128,8 @@
                     <td class="content" height="520" valign="top" width="100%">
                       <small><small>&nbsp;</small></small><br />
                       <br />
-                      A filter assigns a SQL expression to a table column.
-
+                      A filter assigns an SQL expression to a table column.
+					  <br /><br />
                       <h3>Export filter</h3>An export filter is evaluated during the
                       export phase. The column values will be replaced by the result of
                       the expression when the export file is written. ${old-value} is a
@@ -137,7 +137,7 @@
                       <br />
                       With the filter EMPLOYEE.NAME := lower(${old-value})<br />
                       <br />
-                      <img src="filterimg/image001.png" /><br />
+                      <img width="472" height="300" src="filterimg/image001.png" /><br />
                       <br />
                       The employee names will be exported with all letters
                       lowercase:<br />
@@ -150,7 +150,7 @@
                       expression. To define a literal filter, add the prefix "literal:"
                       to the filter expression. The filter:<br />
                       <br />
-                      <img src="filterimg/image003.png" /><br />
+                      <img width="564" height="242" src="filterimg/image003.png" /><br />
                       <br />
                       replaces employee names with numbers from a sequence in the target
                       database.<br />
@@ -170,14 +170,24 @@
                       This filter uses a sequence to generate new EMPNOs during the
                       import phase:<br />
                       <br />
-                      <img src="filterimg/image005.png" /><br />
+                      <img width="1023" height="402" src="filterimg/image005.png" /><br />
                       <br />
                       <br />
 
                       <h3>Filter templates</h3>Templates allow defining filters based on
                       a condition on a column.<br />
                       <br />
-                      <img src="filterimg/image007.png" />
+                      <img width="1066" height="550" src="filterimg/image007.png" />
+                      <br />
+                      <br /><br />
+
+                      <h3 id="nullfilter">"<i>null</i>" filter on foreign key columns</h3>
+                      If a foreign key of a table is nullable, a "<i>null</i>" filter on it (resp. on all columns of a composite foreign key) causes only the foreign key columns of those rows to be filled with "<i>null</i>", whose parent row is not exported as well.<br>
+                      In the same way, only the foreign key columns of those rows are set to "<i>null</i>" when deleting, which are not deleted themselves but their parent.
+                      <br /><br />
+                      The extraction model editor offers the corresponding checkbox "Set foreign key to null ...".
+                      <br /><br/>
+                      <img width="1227" height="359" src="nullfilter.png" />
                     </td>
                   </tr>
                 </tbody>

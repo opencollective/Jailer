@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import net.sf.jailer.util.CancellationException;
 
 /**
  * Keeps progress indicators up to date.
- * 
+ *
  * @author Ralf Wisser
  */
 public abstract class ExportAndDeleteStageProgressListener implements ProgressListener {
@@ -37,13 +37,13 @@ public abstract class ExportAndDeleteStageProgressListener implements ProgressLi
 	private final SingleStageProgressListener deleteProgressListener;
 	private SingleStageProgressListener currentProgressListener;
 	private final ProgressPanel progressPanel;
-	
+
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param progressTable
 	 *            table showing collected rows
-	 * @param targetSchemaSet 
+	 * @param targetSchemaSet
 	 */
 	public ExportAndDeleteStageProgressListener(final ProgressTable exportProgressTable, final ProgressTable deleteProgressTable, final ProgressPanel progressPanel, DataModel dataModel, final boolean confirm, Set<String> targetSchemaSet, boolean checkPK) {
 		this.exportProgressListener = new SingleStageProgressListener(exportProgressTable, progressPanel, dataModel, confirm, targetSchemaSet, true, checkPK) {
@@ -95,7 +95,7 @@ public abstract class ExportAndDeleteStageProgressListener implements ProgressLi
 	}
 
 	boolean switched = false;
-	
+
 	private synchronized void switchToDeleteTab() {
 		if (!switched && currentProgressListener == deleteProgressListener) {
 			switched = true;
@@ -113,17 +113,11 @@ public abstract class ExportAndDeleteStageProgressListener implements ProgressLi
 		currentProgressListener.prepareExport();
 	}
 
-	@Override
-	public void explained(long rc) {
-		exportProgressListener.explained(rc);
-		deleteProgressListener.explained(rc);
-	}
-
 	public void stop() {
 		exportProgressListener.stop();
 		deleteProgressListener.stop();
 	}
 
 	protected abstract void validatePrimaryKeys();
-	
+
 }

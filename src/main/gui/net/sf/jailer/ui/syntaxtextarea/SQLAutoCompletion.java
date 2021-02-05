@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,11 @@ import java.awt.Component;
 
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JOptionPane;
 
 import org.fife.ui.autocomplete.AutoCompletion;
+import org.fife.ui.autocomplete.AutoCompletionEvent;
+import org.fife.ui.autocomplete.AutoCompletionListener;
 import org.fife.ui.autocomplete.BasicCompletion;
 import org.fife.ui.autocomplete.Completion;
 import org.fife.ui.autocomplete.CompletionCellRenderer;
@@ -39,7 +42,7 @@ public class SQLAutoCompletion extends AutoCompletion {
 	
 	private final RTextArea editorPane;
 
-	public SQLAutoCompletion(CompletionProvider provider, RTextArea editorPane) {
+	public SQLAutoCompletion(final CompletionProvider provider, final RTextArea editorPane) {
 		super(provider);
 		this.editorPane = editorPane;
 		install(editorPane);
@@ -89,6 +92,20 @@ public class SQLAutoCompletion extends AutoCompletion {
 				setText(sb.toString());
 			}
 		});
+		addAutoCompletionListener(new AutoCompletionListener() {
+			@SuppressWarnings("rawtypes")
+			@Override
+			public void autoCompleteUpdate(AutoCompletionEvent e) {
+				if (provider instanceof SQLCompletionProvider) {
+					if (!((SQLCompletionProvider) provider).isInitialized()) {
+						if (e.getEventType() == AutoCompletionEvent.Type.POPUP_SHOWN) {
+							JOptionPane.showMessageDialog(editorPane, "The database metadata is still being loaded.\r\n" + 
+									"Auto-complete is therefore not yet available.", "Auto-Complete not yet available", JOptionPane.INFORMATION_MESSAGE);
+						}
+					}
+				}
+			}
+		});
 	}
 
 	@Override
@@ -98,4 +115,4 @@ public class SQLAutoCompletion extends AutoCompletion {
 		editorPane.endAtomicEdit();
 	}
 
-};
+}

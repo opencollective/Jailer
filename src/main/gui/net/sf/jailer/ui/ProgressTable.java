@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -78,12 +78,13 @@ public class ProgressTable extends JTable {
 		public String tableName;
 		public long numberOfRows;
 		public Set<String> parentNames;
+		public boolean excludeFromDeletion;
 		// Calculated
 		public int row, column;
 		public List<CellInfo> parents;
 		public boolean inProgress = false;
 		public boolean hasSelectedChild = false;
-	};
+	}
 
 	/**
 	 * Holds infos about a cells.
@@ -132,6 +133,7 @@ public class ProgressTable extends JTable {
 	private final JLabel numberRender = new JLabel("");
 	private final JLabel iconRender = new JLabel(" ");
 	private final Icon scaledSourceIcon;
+	private final Icon scaledExcludeFromDeletionImage;
 	
 	/** Creates new table */
 	public ProgressTable() {
@@ -139,7 +141,7 @@ public class ProgressTable extends JTable {
 		setSurrendersFocusOnKeystroke(true);
 		
 		scaledSourceIcon = UIUtil.scaleIcon(iconRender, sourceIcon, 1.4);
-		
+		scaledExcludeFromDeletionImage = UIUtil.scaleIcon(iconRender, excludeFromDeletionImage, 1.4);
 		tableRender.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
 		numberRender.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
 		cellPanel.setLayout(new GridBagLayout());
@@ -211,6 +213,9 @@ public class ProgressTable extends JTable {
 					CellInfo cellInfo = (CellInfo) value;
 					
 					iconRender.setIcon(null);
+					if (showExcludeFromDeletionImage && cellInfo.excludeFromDeletion) {
+						iconRender.setIcon(scaledExcludeFromDeletionImage);
+					}
 					if (cellInfo.tableName.equals(selectedTableName)) {
 						outer.setBorder(selBorder);
 					} else if (cellInfo.hasSelectedChild) {
@@ -283,7 +288,7 @@ public class ProgressTable extends JTable {
 						selectedCells.clear();
 						setSelectedTableName(cellInfo.tableName);
 						multiSelection = false;
-						selectCell(cellInfo);
+						selectCell(cellInfo, 0);
 						repaint();
 						getSelectionModel().clearSelection();
 					}
@@ -309,17 +314,21 @@ public class ProgressTable extends JTable {
 	}
 
 	private boolean multiSelection = false;
-	
+
+	private final int MAX_DEPTH = 1000;
+
 	/**
 	 * Recursively selects cells.
 	 * 
 	 * @param cellInfo current cell
 	 */
-	private void selectCell(CellInfo cellInfo) {
-		selectedCells.add(cellInfo);
-		if (cellInfo.parents != null) {
-			for (CellInfo p : cellInfo.parents) {
-				selectCell(p);
+	private void selectCell(CellInfo cellInfo, int depth) {
+		if (!selectedCells.contains(cellInfo) && depth < MAX_DEPTH) {
+			selectedCells.add(cellInfo);
+			if (cellInfo.parents != null) {
+				for (CellInfo p : cellInfo.parents) {
+					selectCell(p, depth + 1);
+				}
 			}
 		}
 	}
@@ -338,7 +347,7 @@ public class ProgressTable extends JTable {
 				if (cellInfo != null) {
 					if (cellInfo.tableName.equals(tableName)) {
 						if (cellInfo.numberOfRows > 0) {
-							selectCell(cellInfo);
+							selectCell(cellInfo, 0);
 						}
 					}
 				}
@@ -425,7 +434,7 @@ public class ProgressTable extends JTable {
 		if (selectedTableName != null) {
 			for (CellInfo cellInfo : cellInfos.get(cellInfos.size() - 1)) {
 				if (cellInfo != null && selectedTableName.equals(cellInfo.tableName) && selectedCells.contains(cellInfo)) {
-					selectCell(cellInfo);
+					selectCell(cellInfo, 0);
 					checkSelection = true;
 					break;
 				}
@@ -450,7 +459,7 @@ public class ProgressTable extends JTable {
 				boolean f = false;
 				for (CellInfo cellInfo : cellInfos.get(cellInfos.size() - 1)) {
 					if (cellInfo != null && selectedTableName.equals(cellInfo.tableName)) {
-						selectCell(cellInfo);
+						selectCell(cellInfo, 0);
 						f = true;
 						break;
 					}
@@ -866,17 +875,19 @@ public class ProgressTable extends JTable {
 			col.setMaxWidth(w);
 		}
 	}
+	
+	private boolean showExcludeFromDeletionImage = true;
+
+	public void setShowExcludeFromDeletionImage(boolean showExcludeFromDeletionImage) {
+		this.showExcludeFromDeletionImage = showExcludeFromDeletionImage;
+	}
 
 	private static ImageIcon sourceIcon;
-	{
-		String dir = "/net/sf/jailer/ui/resource";
-		
+	private static ImageIcon excludeFromDeletionImage;
+	static {
 		// load images
-		try {
-			sourceIcon = new ImageIcon(getClass().getResource(dir + "/source.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		sourceIcon = UIUtil.readImage("/source.png");
+		excludeFromDeletionImage = UIUtil.readImage("/database-lock.png");
 	}
 
 	private static final long serialVersionUID = -6284876860992859979L;

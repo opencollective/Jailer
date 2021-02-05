@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Locale;
 
 import javax.swing.DefaultComboBoxModel;
 
@@ -107,12 +108,12 @@ public class XmlSettingsDialog extends javax.swing.JDialog {
 		String dateExampleText = "- invalid pattern -";
 		String timestampExampleText = "- invalid pattern -";
 		try {
-			dateExampleText = new SimpleDateFormat(datePattern.getEditor().getItem().toString()).format(now);
+			dateExampleText = new SimpleDateFormat(datePattern.getEditor().getItem().toString(), Locale.ENGLISH).format(now);
 		} catch (Exception e) {
 			// ignore
 		}
 		try {
-			timestampExampleText = new SimpleDateFormat(timestampPattern.getEditor().getItem().toString()).format(now);
+			timestampExampleText = new SimpleDateFormat(timestampPattern.getEditor().getItem().toString(), Locale.ENGLISH).format(now);
 		} catch (Exception e) {
 			// ignore
 		}
@@ -180,8 +181,8 @@ public class XmlSettingsDialog extends javax.swing.JDialog {
 		jLabel1 = new javax.swing.JLabel();
 		jLabel2 = new javax.swing.JLabel();
 		jLabel3 = new javax.swing.JLabel();
-		datePattern = new net.sf.jailer.ui.JComboBox();
-		timestampPattern = new net.sf.jailer.ui.JComboBox();
+		datePattern = new net.sf.jailer.ui.JComboBox2();
+		timestampPattern = new net.sf.jailer.ui.JComboBox2();
 		rootTag = new javax.swing.JTextField();
 		dateExample = new javax.swing.JLabel();
 		timestampExample = new javax.swing.JLabel();
@@ -383,7 +384,7 @@ public class XmlSettingsDialog extends javax.swing.JDialog {
 	private javax.swing.JButton Ok;
 	private javax.swing.JButton cancelButton;
 	private javax.swing.JLabel dateExample;
-	private net.sf.jailer.ui.JComboBox datePattern;
+	private net.sf.jailer.ui.JComboBox2 datePattern;
 	private javax.swing.JLabel jLabel1;
 	private javax.swing.JLabel jLabel2;
 	private javax.swing.JLabel jLabel3;
@@ -392,7 +393,7 @@ public class XmlSettingsDialog extends javax.swing.JDialog {
 	private javax.swing.JCheckBox noRootTag;
 	private javax.swing.JTextField rootTag;
 	private javax.swing.JLabel timestampExample;
-	private net.sf.jailer.ui.JComboBox timestampPattern;
+	private net.sf.jailer.ui.JComboBox2 timestampPattern;
 	// End of variables declaration//GEN-END:variables
 	
 	private static final long serialVersionUID = -2752715206964965549L;

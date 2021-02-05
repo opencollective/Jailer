@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ public class AnimationController {
 	private static long nothingActiveSince = 0;
 	private static final int MAX_INACTIVITY = 2 * 60 * 1000;
 	private static Timer timer = null;
+	private static boolean skipNextCheck = false;
 
 	/**
 	 * Registers a new top level window.
@@ -53,11 +54,15 @@ public class AnimationController {
 			timer = new Timer(50, new ActionListener() {
 				@Override
 				public void actionPerformed(ActionEvent e) {
+					if (isSkipNextCheck()) {
+						setSkipNextCheck(false);
+						return;
+					}
 					controlAnimation();
 				}
 			});
 			timer.setRepeats(true);
-			timer.setDelay(MAX_INACTIVITY / 8);
+			timer.setDelay(4000);
 			timer.start();
 		}
 		window.addWindowListener(new WindowListener() {
@@ -113,8 +118,27 @@ public class AnimationController {
 		lastActiveWindow = theActiveWindow;
 		boolean stopAll = theActiveWindow == null && nothingActiveSince > 0 && System.currentTimeMillis() - nothingActiveSince > MAX_INACTIVITY;
 		for (Window window: windowControl.keySet()) {
-			windowControl.get(window).setEnabled(!stopAll && (theActiveWindow == null || window.equals(theActiveWindow)));
+			if (window.isShowing()) {
+				windowControl.get(window).setEnabled(!stopAll && (theActiveWindow == null || window.equals(theActiveWindow)));
+			}
 		}
 	}
 
+	public static void activateAnimation(Window window) {
+		if (window != null && window.isShowing() && !windowIsActive.get(window)) {
+			AnimationControl animationControl = windowControl.get(window);
+			if (animationControl != null) {
+				setSkipNextCheck(true);
+				animationControl.setEnabled(true);
+			}
+		}
+	}
+
+	private static boolean isSkipNextCheck() {
+		return skipNextCheck;
+	}
+
+	private static void setSkipNextCheck(boolean skipNextCheck) {
+		AnimationController.skipNextCheck = skipNextCheck;
+	}
 }

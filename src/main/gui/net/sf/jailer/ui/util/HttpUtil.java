@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 
+import net.sf.jailer.ui.Environment;
+
 public class HttpUtil {
 	
 	public static String get(final String url) {
@@ -35,7 +37,7 @@ public class HttpUtil {
 			// fall through
 		}
 	    try {
-	        Process p = Runtime.getRuntime().exec("java -classpath jailer.jar -Djava.net.useSystemProxies=true " + HttpUtil.class.getName() + " " + url);
+	        Process p = Runtime.getRuntime().exec("java -classpath " + Environment.newWorkingFolderFile("jailer.jar").getPath() + " -Djava.net.useSystemProxies=true " + HttpUtil.class.getName() + " " + url);
         	BufferedReader input = new BufferedReader(new InputStreamReader(p.getInputStream()));
             String line;
 

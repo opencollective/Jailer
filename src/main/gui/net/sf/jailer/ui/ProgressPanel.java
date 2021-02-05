@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ import net.sf.jailer.database.DMLTransformer;
 
 /**
  * Progress panel.
- * 
+ *
  * @author Ralf Wisser
  */
 public class ProgressPanel extends javax.swing.JPanel {
@@ -49,10 +49,10 @@ public class ProgressPanel extends javax.swing.JPanel {
 	private Font nonboldbig = new Font(font.getName(), font.getStyle() & ~Font.BOLD, (font.getSize() * 14) / 10);
 	private final ProgressTable progressTable;
 	private final ProgressTable deleteProgressTable;
-	
-	/** Creates new form ProgressPanel 
+
+	/** Creates new form ProgressPanel
 	 * @param progressTable */
-	public ProgressPanel(ProgressTable progressTable, ProgressTable deleteProgressTable, boolean withDelete, boolean withExplain) {
+	public ProgressPanel(ProgressTable progressTable, ProgressTable deleteProgressTable, boolean withDelete) {
 		this.progressTable = progressTable;
 		this.deleteProgressTable = deleteProgressTable;
 		initComponents();
@@ -66,16 +66,13 @@ public class ProgressPanel extends javax.swing.JPanel {
 		progressTableHolder.setColumnHeaderView(null);
 		progressTableHolderForDelete.setColumnHeaderView(null);
 		if (!withDelete) {
+			progressTable.setShowExcludeFromDeletionImage(false);
 			deletedRowsLabel.setVisible(false);
 			deletedRowsTitelLabel.setVisible(false);
 			jTabbedPane1.remove(panel4);
 			jPanel4.remove(jTabbedPane1);
 			jTabbedPane1.remove(panel3);
 			jPanel4.add(panel3);
-		}
-		if (!withExplain) {
-			explainedRowsLabel.setVisible(false);
-			explainedRowsTitelLabel.setVisible(false);
 		}
 		stepLabelColor = stepLabel.getForeground();
 		initialStepLabelColor = stepLabelColor;
@@ -88,7 +85,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 	}
 
 	private Map<String, JLabel> reductionLabels = new HashMap<String, JLabel>();
-	
+
 	public void updateRowsReductionPerTable(Map<String, Long> rowsReductionPerTable) {
 		for (Entry<String, Long> e: rowsReductionPerTable.entrySet()) {
 			JLabel label = reductionLabels.get(e.getKey());
@@ -97,12 +94,12 @@ public class ProgressPanel extends javax.swing.JPanel {
 			}
 		}
 	}
-	
+
 	public void updateRowsPerTable(Map<String, Long> rowsPerTable) {
 		rowsPerTablePanel.removeAll();
 		allMouseListener.clear();
 		int y = 0;
-		
+
 		GridBagConstraints gridBagConstraints;
 		for (String tableName: rowsPerTable.keySet()) {
 			Color bgColor;
@@ -138,7 +135,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 			gridBagConstraints.weightx = 1.0;
 //            gridBagConstraints.insets = new Insets(2, 0, 2, 0);
 			rowsPerTablePanel.add(l, gridBagConstraints);
-			
+
 			l = new JLabel(" ");
 			reductionLabels.put(tableName, l);
 			if (y % 2 == 0) {
@@ -156,7 +153,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 			gridBagConstraints.weightx = 0;
 //            gridBagConstraints.insets = new Insets(2, 0, 2, 0);
 			rowsPerTablePanel.add(l, gridBagConstraints);
-			
+
 			++y;
 		}
 		JLabel l = new JLabel("");
@@ -166,14 +163,14 @@ public class ProgressPanel extends javax.swing.JPanel {
 		gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
 		gridBagConstraints.weighty = 1.0;
 		rowsPerTablePanel.add(l, gridBagConstraints);
-		
+
 		rowsPerTablePanel.repaint();
 	}
 
 	private int currentlySelectedRow = -1;
 	private final Color BGCOLOR_OF_SELECTED_ROW = Color.CYAN;
 	private List<MouseListener> allMouseListener = new ArrayList<MouseListener>();
-	
+
 	private JLabel createLabel(final int y, final String tableName, Color bgColor) {
 		final JLabel label = new JLabel();
 		label.setBackground(bgColor);
@@ -224,7 +221,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 	public void switchToDeleteTab() {
 		jTabbedPane1.setSelectedIndex(1);
 	}
-	
+
 	/** This method is called from within the constructor to
 	 * initialize the form.
 	 * WARNING: Do NOT modify this code. The content of this method is
@@ -251,8 +248,6 @@ public class ProgressPanel extends javax.swing.JPanel {
         elapsedTimeLabel = new javax.swing.JLabel();
         deletedRowsTitelLabel = new javax.swing.JLabel();
         deletedRowsLabel = new javax.swing.JLabel();
-        explainedRowsTitelLabel = new javax.swing.JLabel();
-        explainedRowsLabel = new javax.swing.JLabel();
         jPanel4 = new javax.swing.JPanel();
         jTabbedPane1 = new javax.swing.JTabbedPane();
         panel3 = new javax.swing.JPanel();
@@ -392,24 +387,6 @@ public class ProgressPanel extends javax.swing.JPanel {
         gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
         jPanel2.add(deletedRowsLabel, gridBagConstraints);
 
-        explainedRowsTitelLabel.setFont(explainedRowsTitelLabel.getFont().deriveFont(explainedRowsTitelLabel.getFont().getStyle() & ~java.awt.Font.BOLD, explainedRowsTitelLabel.getFont().getSize()+2));
-        explainedRowsTitelLabel.setText(" Explained Rows  ");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 5;
-        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
-        jPanel2.add(explainedRowsTitelLabel, gridBagConstraints);
-
-        explainedRowsLabel.setText("0");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 5;
-        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(4, 0, 0, 0);
-        jPanel2.add(explainedRowsLabel, gridBagConstraints);
-
         jPanel3.add(jPanel2);
 
         jSplitPane1.setLeftComponent(jPanel3);
@@ -487,7 +464,7 @@ public class ProgressPanel extends javax.swing.JPanel {
 		}
 		JOptionPane.showMessageDialog(this, message, "Finished", JOptionPane.INFORMATION_MESSAGE);
 	}
-	
+
 	public void onCancel() {
 		inCancellingStep = true;
 		stepLabel.setText("cancelling...");
@@ -495,18 +472,16 @@ public class ProgressPanel extends javax.swing.JPanel {
     }
 
 	public boolean inCancellingStep = false;
-	
-	// 
+
+	//
 	// obsolete
 	// new StatisticDialog(this, message);
-	
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     public javax.swing.JLabel collectedRowsLabel;
     public javax.swing.JLabel deletedRowsLabel;
     private javax.swing.JLabel deletedRowsTitelLabel;
     public javax.swing.JLabel elapsedTimeLabel;
-    public javax.swing.JLabel explainedRowsLabel;
-    private javax.swing.JLabel explainedRowsTitelLabel;
     public javax.swing.JLabel exportedRowsLabel;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
@@ -533,7 +508,7 @@ public class ProgressPanel extends javax.swing.JPanel {
     private javax.swing.JPanel rowsPerTablePanel;
     public javax.swing.JLabel stepLabel;
     // End of variables declaration//GEN-END:variables
-    
+
 	protected void onNewStep() {
 		if (timer == null && stepLabel.getText().endsWith("...")) {
 			startTimer();
@@ -549,7 +524,7 @@ public class ProgressPanel extends javax.swing.JPanel {
     	stepLabel.setForeground(color);
     	stepLabelColor = color;
 	}
-    
+
     private void startTimer() {
     	Window window = SwingUtilities.getWindowAncestor(this);
     	if (window == null || !window.isVisible()) {

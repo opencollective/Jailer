@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -99,6 +99,10 @@ public class InfoBar extends JPanel {
 
 	public void setIcon(Icon errorIcon) {
 		iconLabel.setIcon(errorIcon);
+	}
+	
+	public void shrink() {
+		jLabel1.setVisible(false);
 	}
 
 	/**

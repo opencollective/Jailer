@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -105,7 +106,7 @@ import prefuse.visual.VisualItem;
 
 /**
  * Graphical restriction model view and editor.
- * 
+ *
  * @author Ralf Wisser
  */
 public class GraphicalDataModelView extends JPanel {
@@ -114,12 +115,12 @@ public class GraphicalDataModelView extends JPanel {
 	 * Maximum number of tables to make visible during expansion ("expand all").
 	 */
 	public static final int EXPAND_LIMIT = 10;
-	
+
 	/**
 	 * Maximum number of tables to make visible during expansion ("expand single table").
 	 */
 	public static final int EXPAND_SINGLE_TABLE_LIMIT = 4;
-	
+
 	/**
 	 * The selected association.
 	 */
@@ -134,7 +135,7 @@ public class GraphicalDataModelView extends JPanel {
 	 * Path from selected one to the root.
 	 */
 	private List<Association> associationsOnPath = new ArrayList<Association>();
-	
+
 	// constants
 	private static final String graph = "graph";
 	private static final String nodes = "graph.nodes";
@@ -145,17 +146,17 @@ public class GraphicalDataModelView extends JPanel {
 	private VisualGraph visualGraph;
 	public Display display;
 	private boolean inInitialization = false;
-	
+
 	/**
 	 * The root table.
 	 */
 	final Table root;
-	
+
 	/**
 	 * Table renderer.
 	 */
 	private TableRenderer tableRenderer;
-	
+
 	/**
 	 * Association renderer.
 	 */
@@ -170,12 +171,12 @@ public class GraphicalDataModelView extends JPanel {
 	 * Layouts the model graph.
 	 */
 	private ForceDirectedLayout layout;
-	
+
 	/**
 	 * Zooms to fit on mouse click.
 	 */
 	private ZoomToFitControlExtension zoomToFitControl;
-	
+
 	/**
 	 * Table details mode.
 	 */
@@ -186,10 +187,10 @@ public class GraphicalDataModelView extends JPanel {
 	private final ExecutionContext executionContext;
 
 	private final ActionList animate;
-	
+
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param model the restricted data model
 	 * @param modelEditor enclosing model editor
 	 * @param width
@@ -220,22 +221,22 @@ public class GraphicalDataModelView extends JPanel {
 			}
 		}
 		theGraph = getModelGraph(model, initiallyVisibleTables, expandSubject);
-		
+
 		// create a new, empty visualization for our data
 		visualization = new Visualization();
-		
+
 		final ZoomBoxControl zoomBoxControl = new ZoomBoxControl() {
 			@Override
 			public void mouseReleased(MouseEvent e) {
 				super.mouseReleased(e);
 				resetScrollTimer();
 			}
-			
+
 		};
-		
+
 		// --------------------------------------------------------------------
 		// set up the renderers
-		
+
 		final ShapeRenderer sr = new ShapeRenderer() {
 			@Override
 			protected Shape getRawShape(VisualItem item) {
@@ -247,7 +248,7 @@ public class GraphicalDataModelView extends JPanel {
 				if ( Double.isNaN(y) || Double.isInfinite(y) )
 					y = 0;
 				double width = 10 * item.getSize();
-				
+
 				// Center the shape around the specified x and y
 				if ( width > 1 ) {
 					x = x-width/2;
@@ -256,9 +257,9 @@ public class GraphicalDataModelView extends JPanel {
 				return ellipse((float) x, (float) y, (float) width, (float) width);
 			}
 		};
-		
-		associationRenderer = new CompositeAssociationRenderer();
-		
+
+		associationRenderer = new CompositeAssociationRenderer(model);
+
 		tableRenderer.setRoundedCorner(3, 3);
 		tableRenderer.setVerticalPadding(3);
 		tableRenderer.setHorizontalPadding(3);
@@ -280,15 +281,15 @@ public class GraphicalDataModelView extends JPanel {
 
 		// adds graph to visualization and sets renderer label field
 		setGraph(theGraph);
-		
+
 		// fix selected focus nodes
-		TupleSet focusGroup = visualization.getGroup(Visualization.FOCUS_ITEMS); 
+		TupleSet focusGroup = visualization.getGroup(Visualization.FOCUS_ITEMS);
 		focusGroup.addTupleSetListener(new TupleSetListener() {
 			@Override
 			public void tupleSetChanged(TupleSet ts, Tuple[] add, Tuple[] rem)
 			{
 				boolean draw = false;
-				
+
 				if (inInitialization) {
 					return;
 				}
@@ -305,18 +306,18 @@ public class GraphicalDataModelView extends JPanel {
 				}
 			}
 		});
-		
+
 		// --------------------------------------------------------------------
 		// create actions to process the visual data
 
 		int hops = 30;
 		final GraphDistanceFilter filter = new GraphDistanceFilter(graph, hops);
 
-		ColorAction fill = new ColorAction(nodes, 
-				VisualItem.FILLCOLOR, ColorLib.rgba(255,235,20,100));
-		fill.add(VisualItem.FIXED, ColorLib.rgba(255,235,20,100));
+		ColorAction fill = new ColorAction(nodes,
+				VisualItem.FILLCOLOR, ColorLib.rgba(255,235,20,75));
+		fill.add(VisualItem.FIXED, ColorLib.rgba(255,235,20,75));
 		fill.add(VisualItem.HIGHLIGHT, ColorLib.rgba(160,160,0,120));
-		
+
 		ActionList draw = new ActionList();
 		draw.add(filter);
 		draw.add(fill);
@@ -324,11 +325,11 @@ public class GraphicalDataModelView extends JPanel {
 		draw.add(new ColorAction(nodes, VisualItem.TEXTCOLOR, ColorLib.rgb(0,0,0)));
 		draw.add(new ColorAction(edges, VisualItem.FILLCOLOR, ColorLib.gray(200)));
 		draw.add(new ColorAction(edges, VisualItem.STROKECOLOR, ColorLib.gray(200)));
-		
+
 		animate = new ActionList(Activity.INFINITY);
 		animate.add(fill);
 		animate.add(new RepaintAction());
-		
+
 		if (modelEditor.extractionModelFrame.animationStepTime > 0) {
 			animate.setStepTime(modelEditor.extractionModelFrame.animationStepTime);
 		}
@@ -338,20 +339,20 @@ public class GraphicalDataModelView extends JPanel {
 		// Visualization, using the name we've chosen below.
 		visualization.putAction("draw", draw);
 		visualization.putAction("layout", animate);
-		
+
 		visualization.runAfter("draw", "layout");
-		
-		
+
+
 		// --------------------------------------------------------------------
 		// set up a display to show the visualization
-		
+
 		display = new Display(visualization);
 		display.setDamageRedraw(false);
 		display.setSize(width, height);
 		display.pan(width / 2, height / 2);
 		display.setForeground(Color.GRAY);
 		display.setBackground(Color.WHITE);
-		
+
 		// main display controls
 		display.addControlListener(new FocusControl(1));
 		display.addControlListener(new DragControl() {
@@ -430,7 +431,7 @@ public class GraphicalDataModelView extends JPanel {
 				}
 				super.itemPressed(item, e);
 			}
-			
+
 			@Override
 			public void itemReleased(VisualItem item, MouseEvent e) {
 				resetScrollTimer();
@@ -457,7 +458,7 @@ public class GraphicalDataModelView extends JPanel {
 				Display display = (Display)e.getComponent();
 				Point p = e.getPoint();
 				zoom(display, p,
-					 1 + 0.1f * e.getWheelRotation(), false);
+					 1 - 0.1f * e.getWheelRotation(), false);
 			}
 
 		});
@@ -467,21 +468,22 @@ public class GraphicalDataModelView extends JPanel {
 
 		display.setForeground(Color.GRAY);
 		display.setBackground(Color.WHITE);
-		
+
 		// now we run our action list
 		visualization.run("draw");
-		
+
 		resetExpandedState();
-		
+
 		display.setHighQuality(true);
-		
+
 		add(display);
 
 		Rectangle2D bounds = null;
 		if (root != null) {
 			synchronized (visualization) {
+				@SuppressWarnings("rawtypes")
 				Iterator items = visualization.items(BooleanLiteral.TRUE);
-				for (int m_visibleCount=0; items.hasNext(); ++m_visibleCount ) {
+				while (items.hasNext()) {
 					VisualItem item = (VisualItem)items.next();
 					if (item.canGetString("label") ) {
 						String tableName = item.getString("label");
@@ -497,11 +499,11 @@ public class GraphicalDataModelView extends JPanel {
 				}
 			}
 		}
-		
+
 		if (bounds != null) {
 			display.panToAbs(new Point2D.Double(bounds.getCenterX(), bounds.getCenterY()));
 		}
-		
+
 		layout = new ForceDirectedLayout(graph) {
 			@Override
 			protected float getMassValue(VisualItem n) {
@@ -519,11 +521,12 @@ public class GraphicalDataModelView extends JPanel {
 		updateTableDetailsMode();
 		layout.getForceSimulator().setIntegrator(new Integrator() {
 			@Override
-			public void integrate(ForceSimulator sim, long timestep) {                
+			public void integrate(ForceSimulator sim, long timestep) {
 				float speedLimit = sim.getSpeedLimit();
 				float vx, vy, v, coeff;
 				float[][] k, l;
-				
+
+				@SuppressWarnings("rawtypes")
 				Iterator iter = sim.getItems();
 				while ( iter.hasNext() ) {
 					ForceItem item = (ForceItem)iter.next();
@@ -536,15 +539,15 @@ public class GraphicalDataModelView extends JPanel {
 					k[0][1] = timestep*item.velocity[1];
 					l[0][0] = coeff*item.force[0];
 					l[0][1] = coeff*item.force[1];
-				
+
 					// Set the position to the new predicted position
 					item.location[0] += 0.5f*k[0][0];
 					item.location[1] += 0.5f*k[0][1];
 				}
-				
+
 				// recalculate forces
 				sim.accumulate();
-				
+
 				iter = sim.getItems();
 				while ( iter.hasNext() ) {
 					ForceItem item = (ForceItem)iter.next();
@@ -562,15 +565,15 @@ public class GraphicalDataModelView extends JPanel {
 					k[1][1] = timestep*vy;
 					l[1][0] = coeff*item.force[0];
 					l[1][1] = coeff*item.force[1];
-				
+
 					// Set the position to the new predicted position
 					item.location[0] = item.plocation[0] + 0.5f*k[1][0];
 					item.location[1] = item.plocation[1] + 0.5f*k[1][1];
 				}
-				
+
 				// recalculate forces
 				sim.accumulate();
-				
+
 				iter = sim.getItems();
 				while ( iter.hasNext() ) {
 					ForceItem item = (ForceItem)iter.next();
@@ -588,15 +591,15 @@ public class GraphicalDataModelView extends JPanel {
 					k[2][1] = timestep*vy;
 					l[2][0] = coeff*item.force[0];
 					l[2][1] = coeff*item.force[1];
-				
+
 					// Set the position to the new predicted position
 					item.location[0] = item.plocation[0] + 0.5f*k[2][0];
 					item.location[1] = item.plocation[1] + 0.5f*k[2][1];
 				}
-				
+
 				// recalculate forces
 				sim.accumulate();
-				
+
 				iter = sim.getItems();
 				while ( iter.hasNext() ) {
 					ForceItem item = (ForceItem)iter.next();
@@ -622,7 +625,7 @@ public class GraphicalDataModelView extends JPanel {
 					}
 					item.location[0] = p[0] + dx;
 					item.location[1] = p[1] + dy;
-					
+
 					vx = (l[0][0]+l[3][0])/6.0f + (l[1][0]+l[2][0])/3.0f;
 					vy = (l[0][1]+l[3][1])/6.0f + (l[1][1]+l[2][1])/3.0f;
 					v = (float)Math.sqrt(vx*vx+vy*vy);
@@ -633,7 +636,7 @@ public class GraphicalDataModelView extends JPanel {
 					item.velocity[0] += vx;
 					item.velocity[1] += vy;
 				}
-			
+
 			}
 		});
 		layout.setVisualization(visualization);
@@ -648,8 +651,9 @@ public class GraphicalDataModelView extends JPanel {
 					if (!done) {
 						synchronized (visualization) {
 							if (root != null && !initiallyVisibleTables.isEmpty()) {
+								@SuppressWarnings("rawtypes")
 								Iterator items = visualization.items(BooleanLiteral.TRUE);
-								for (int m_visibleCount=0; items.hasNext(); ++m_visibleCount ) {
+								while (items.hasNext()) {
 									VisualItem item = (VisualItem)items.next();
 									if (item.canGetString("label") ) {
 										String tableName;
@@ -690,17 +694,17 @@ public class GraphicalDataModelView extends JPanel {
 			}
 		});
 	}
-	
+
 	/**
 	 * Stores current positions of the tables.
 	 */
-	@SuppressWarnings("unchecked")
 	public void storeLayout() {
 		if (root != null && layoutHasBeenSet) {
 			synchronized (visualization) {
 				executionContext.getLayoutStorage().removeAll(root.getName());
+				@SuppressWarnings("rawtypes")
 				Iterator items = visualization.items(BooleanLiteral.TRUE);
-				for (int m_visibleCount=0; items.hasNext(); ++m_visibleCount ) {
+				while (items.hasNext()) {
 					VisualItem item = (VisualItem)items.next();
 					if (item.canGetString("label") ) {
 						String tableName;
@@ -725,9 +729,9 @@ public class GraphicalDataModelView extends JPanel {
 	public JPopupMenu createPopupMenu(final Table table, JMenuItem findPathMenuItem, boolean withNavigation) {
 		JPopupMenu popup = new JScrollPopupMenu();
 		boolean withModifications = modelEditor.getAdditionalPopupMenuItems().isEmpty();
-			
+
 		JMenu navigateTo = null;
-		
+
 		if (withNavigation) {
 			navigateTo = new JScrollMenu("Show Associated Table");
 			List<Association> aList = new ArrayList<Association>();
@@ -791,7 +795,7 @@ public class GraphicalDataModelView extends JPanel {
 				currentMenu.add(mi);
 			}
 		}
-		
+
 //		JMenuItem select = new JMenuItem("Select " + table.getName());
 //		select.addActionListener(new ActionListener () {
 //			public void actionPerformed(ActionEvent e) {
@@ -852,7 +856,7 @@ public class GraphicalDataModelView extends JPanel {
 			}
 		});
 		mapColumns.setEnabled(ScriptFormat.XML.equals(modelEditor.scriptFormat));
-		
+
 		JMenuItem restrictAll = new JMenuItem("Disable Associations");
 		restrictAll.addActionListener(new ActionListener () {
 			@Override
@@ -861,7 +865,7 @@ public class GraphicalDataModelView extends JPanel {
 			}
 		});
 		restrictAll.setEnabled(modelEditor.isIgnoreAllApplicable(table));
-		
+
 		JMenuItem removeRestrictions = new JMenuItem("Remove Restrictions");
 		removeRestrictions.addActionListener(new ActionListener () {
 			@Override
@@ -890,7 +894,7 @@ public class GraphicalDataModelView extends JPanel {
 //			}
 //		});
 		removeRestrictions.setEnabled(modelEditor.isRemovalOfAllRestrictionsApplicable(table));
-		
+
 //		JMenuItem findTable = new JMenuItem("Browse Closure");
 //		findTable.addActionListener(new ActionListener () {
 //			public void actionPerformed(ActionEvent e) {
@@ -937,7 +941,7 @@ public class GraphicalDataModelView extends JPanel {
 			popup.add(new JSeparator());
 			popup.add(queryBuilder);
 			popup.add(htmlRender);
-		
+
 			popup.add(new JSeparator());
 			JMenu insertModeMenu = new JMenu("Export Mode");
 			popup.add(insertModeMenu);
@@ -975,19 +979,19 @@ public class GraphicalDataModelView extends JPanel {
 			bt.add(insert);
 			bt.add(upsert);
 			bt.add(deflt);
-			
+
 			if (table.upsert == null) {
 				deflt.setSelected(true);
 			}
-			
+
 			if (Boolean.TRUE.equals(table.upsert)) {
 				upsert.setSelected(true);
 			}
-			
+
 			if (Boolean.FALSE.equals(table.upsert)) {
 				insert.setSelected(true);
 			}
-			
+
 			JMenu excludeMenu = new JMenu("Exclude from Deletion");
 			popup.add(excludeMenu);
 			JRadioButtonMenuItem yes = new JRadioButtonMenuItem("Yes");
@@ -1024,27 +1028,27 @@ public class GraphicalDataModelView extends JPanel {
 			bt.add(yes);
 			bt.add(no);
 			bt.add(deflt);
-			
+
 			if (table.excludeFromDeletion == null) {
 				deflt.setSelected(true);
 			}
-			
+
 			if (Boolean.TRUE.equals(table.excludeFromDeletion)) {
 				yes.setSelected(true);
 			}
-			
+
 			if (Boolean.FALSE.equals(table.excludeFromDeletion)) {
 				no.setSelected(true);
 			}
 		}
-		
+
 		if (!modelEditor.getAdditionalPopupMenuItems().isEmpty()) {
 			popup.addSeparator();
 			for (JMenuItem item: modelEditor.getAdditionalPopupMenuItems()) {
 				popup.add(item);
 			}
 		}
-		
+
 		return popup;
 	}
 
@@ -1065,7 +1069,7 @@ public class GraphicalDataModelView extends JPanel {
 			public void run() {
 				changeExcludeFromDeletion(old, table);
 			}
-		});;
+		});
 	}
 
 	private void changeExportMode(Boolean mode, final Table table) {
@@ -1085,7 +1089,7 @@ public class GraphicalDataModelView extends JPanel {
 			public void run() {
 				changeExportMode(old, table);
 			}
-		});;
+		});
 	}
 
 	/**
@@ -1097,7 +1101,7 @@ public class GraphicalDataModelView extends JPanel {
 	public JPopupMenu createPopupMenu(final Association association) {
 		JPopupMenu popup = new JPopupMenu();
 		boolean withModifications = modelEditor.getAdditionalPopupMenuItems().isEmpty();
-		
+
 		JMenuItem disable = new JMenuItem("Disable Association");
 		disable.addActionListener(new ActionListener () {
 			@Override
@@ -1122,7 +1126,7 @@ public class GraphicalDataModelView extends JPanel {
 
 		disable.setEnabled(!association.isIgnored());
 		enable.setEnabled(association.isRestricted());
-		
+
 		if (withModifications) {
 			popup.add(disable);
 			popup.add(enable);
@@ -1135,7 +1139,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Hides a table.
-	 * 
+	 *
 	 * @param table the table to hide
 	 */
 	protected void hideTable(Table table) {
@@ -1146,7 +1150,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Closes the view.
-	 * @param storeLayout 
+	 * @param storeLayout
 	 */
 	public void close(boolean storeLayout, boolean removeLayout) {
 		if (storeLayout) {
@@ -1178,7 +1182,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Sets visual graph.
-	 * 
+	 *
 	 * @param g the (non-visual) model graph
 	 */
 	private void setGraph(Graph g) {
@@ -1188,32 +1192,36 @@ public class GraphicalDataModelView extends JPanel {
 			visualization.removeGroup(graph);
 			visualGraph = visualization.addGraph(graph, g);
 			if (visualGraph.getNodeCount() > 1) {
-				VisualItem f = (VisualItem) visualGraph.getNode(1);
-				visualization.getGroup(Visualization.FOCUS_ITEMS).setTuple(f);
-				f.setFixed(true);
-				((VisualItem) visualGraph.getNode(0)).setFixed(true);
+				try {
+					VisualItem f = (VisualItem) visualGraph.getNode(1);
+					visualization.getGroup(Visualization.FOCUS_ITEMS).setTuple(f);
+					f.setFixed(true);
+					((VisualItem) visualGraph.getNode(0)).setFixed(true);
+				} catch (Exception e) {
+					// ignore
+				}
 			}
 		}
-		
+
 		inInitialization = false;
 	}
-	
+
 	/**
 	 * The model as graph.
 	 */
 	private Graph theGraph;
-	
+
 	/**
 	 * Maps tables to their graph nodes.
 	 */
 	Map<net.sf.jailer.datamodel.Table, Node> tableNodes = Collections.synchronizedMap(new HashMap<net.sf.jailer.datamodel.Table, Node>());
 	long tableNodesVersion = 1;
-	
+
 	/**
 	 * Set of all tables which are currently expanded.
 	 */
 	Set<net.sf.jailer.datamodel.Table> expandedTables = Collections.synchronizedSet(new HashSet<net.sf.jailer.datamodel.Table>());
-	
+
 	/**
 	 * Maps associations to their edges.
 	 */
@@ -1227,7 +1235,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Sets selected association.
-	 * 
+	 *
 	 * @param association the association to select or <code>null</code> to deselect
 	 */
 	public void setSelection(Association association) {
@@ -1274,10 +1282,10 @@ public class GraphicalDataModelView extends JPanel {
 			}
 		}
 	}
-	
+
 	private Table currentScrollDestination = null;
 	private Object currentScrollBounds = null;
-	
+
 	private void resetScrollTimer() {
 		synchronized (visualization) {
 			currentScrollDestination = null;
@@ -1312,7 +1320,7 @@ public class GraphicalDataModelView extends JPanel {
 											}
 											Point2D tl = new Point2D.Double(0, 0);
 											Point2D br = new Point2D.Double(display.getWidth(), display.getHeight());
-											
+
 											Rectangle2D iBounds = item.getBounds();
 											Point2D d1 = display.getTransform().transform(new Point2D.Double(iBounds.getMinX(), iBounds.getMinY()), null);
 											Point2D d2 = display.getTransform().transform(new Point2D.Double(iBounds.getMaxX(), iBounds.getMaxY()), null);
@@ -1324,10 +1332,10 @@ public class GraphicalDataModelView extends JPanel {
 											} else {
 												currentScrollBounds = iBounds.clone();
 											}
-											
+
 											double dx = 0;
 											double dy = 0;
-											
+
 											double d = tl.getX() - bounds.getMinX();
 											if (d > 0) {
 												dx = d;
@@ -1367,7 +1375,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Gets shortest path from root to a given table.
-	 * 
+	 *
 	 * @param destination the table
 	 * @param ignoreInvisibleAssociations if <code>true</code>, find a path over visible associations only
 	 * @return shortest path from root to a given table
@@ -1378,7 +1386,7 @@ public class GraphicalDataModelView extends JPanel {
 		Map<Table, Association> outgoingAssociation = new HashMap<Table, Association>();
 		List<Table> agenda = new ArrayList<Table>();
 		agenda.add(destination);
-		
+
 		while (!agenda.isEmpty()) {
 			Table table = agenda.remove(0);
 			for (Association association: incomingAssociations(table, ignoreInvisibleAssociations, newlySelectedAssociation)) {
@@ -1401,13 +1409,13 @@ public class GraphicalDataModelView extends JPanel {
 				path.add(association);
 			}
 		}
-		
+
 		return path;
 	}
 
 	/**
 	 * Collects all non-disabled associations with a given table as destination.
-	 * 
+	 *
 	 * @param table the table
 	 */
 	private Collection<Association> incomingAssociations(Table table, boolean ignoreInvisibleAssociations, Association newlySelectedAssociation) {
@@ -1422,7 +1430,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Gets model as graph.
-	 * 
+	 *
 	 * @param model the data model
 	 * @return graph
 	 */
@@ -1431,7 +1439,7 @@ public class GraphicalDataModelView extends JPanel {
 		++tableNodesVersion;
 		expandedTables = new HashSet<net.sf.jailer.datamodel.Table>();
 		renderedAssociations = new HashMap<Association, Edge>();
-		
+
 		Graph g = new Graph(true);
 		Schema s = new Schema();
 		s.addColumn("label", String.class);
@@ -1439,21 +1447,21 @@ public class GraphicalDataModelView extends JPanel {
 		s.addColumn("association", Association.class);
 		s.addColumn("full", Boolean.class);
 		g.addColumns(s);
-		
+
 		Node zoomBox = g.addNode();
 		zoomBox.setString("label", ZoomBoxControl.BOX_ITEM_LABEL);
-		
+
 		Table table = root;
 		showTable(g, table);
-		
+
 		if (table != null) {
 			if (!modelEditor.extractionModelFrame.showDisabledAssociations()) {
-				initiallyVisibleTables.retainAll(table.closure(true));
+				initiallyVisibleTables.retainAll(table.closure());
 			} else {
 				initiallyVisibleTables.retainAll(table.unrestrictedClosure(new HashSet<Table>()));
 			}
 		}
-		
+
 		for (Table t: initiallyVisibleTables) {
 			showTable(g, t);
 		}
@@ -1463,7 +1471,7 @@ public class GraphicalDataModelView extends JPanel {
 		if (!initiallyVisibleTables.isEmpty()) {
 			addEdges(g, table, null, new ArrayList<Table>(), true, null);
 		}
-		
+
 		int nAssociatedTables = 0;
 		if (table != null) {
 			for (Association a: table.associations) {
@@ -1472,17 +1480,17 @@ public class GraphicalDataModelView extends JPanel {
 				}
 			}
 		}
-		
+
 		if (initiallyVisibleTables.isEmpty() && nAssociatedTables <= 10 && expandSubject) {
 			expandTable(g, table, null, false, null);
 		}
-		
+
 		return g;
 	}
-	
+
 	/**
 	 * Creates visible node for given table.
-	 * 
+	 *
 	 * @param graph the graph
 	 * @param table the table to show
 	 */
@@ -1498,7 +1506,7 @@ public class GraphicalDataModelView extends JPanel {
 		}
 		return false;
 	}
-	
+
 	/**
 	 * Creates visible node for given table.
 	 */
@@ -1510,10 +1518,10 @@ public class GraphicalDataModelView extends JPanel {
 			checkForExpansion(theGraph, toCheck, false);
 		}
 	}
-	
+
 	/**
 	 * Collapses a node representing a table.
-	 * 
+	 *
 	 * @param g the graph
 	 * @param table the table node
 	 * @param hideTable if <code>true</code>, hide table too
@@ -1522,7 +1530,7 @@ public class GraphicalDataModelView extends JPanel {
 		if (table == null || (expandedTables.contains(table) || hideTable)) {
 			Set<Association> associationsToKeep = new HashSet<Association>();
 			Set<Table> tablesToKeep = new HashSet<Table>();
-			
+
 			collect(root, table, associationsToKeep, tablesToKeep);
 			if (hideTable && table != null) {
 				for (Association a: table.associations) {
@@ -1575,10 +1583,10 @@ public class GraphicalDataModelView extends JPanel {
 			checkForExpansion(theGraph, tablesToKeep, false);
 		}
 	}
-	
+
 	/**
 	 * Collect all tables and associations in closure of root.
-	 * 
+	 *
 	 * @param root the root
 	 * @param ignore table to ignore
 	 * @param associationsToKeep to collect associations
@@ -1601,12 +1609,12 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Expands a node representing a table.
-	 * 
+	 *
 	 * @param g the graph
 	 * @param table the table node
 	 * @param toRender if not null, the only association to make visible
-	 * @param allowedTables 
-	 *  
+	 * @param allowedTables
+	 *
 	 * @return list of newly rendered tables
 	 */
 	private List<Table> expandTable(final Graph g, final net.sf.jailer.datamodel.Table table, final Association toRender, boolean withLimit, Set<Table> allowedTables) {
@@ -1631,18 +1639,18 @@ public class GraphicalDataModelView extends JPanel {
 			result = addEdges(g, table, toRender, toCheck, false, allowedTables);
 			// expandedTables.add(table);
 			checkForExpansion(g, toCheck, false);
-			
+
 			if (withLimit) {
 				checkForExpansion(g, model.getTables(), true);
 				if (allowedTables.size() < tables.size()) {
 					modelEditor.addMessageBox(new ExpansionLimitMessage(EXPAND_SINGLE_TABLE_LIMIT, tables.size() - allowedTables.size()) {
-	
+
 						@Override
 						protected void showMore() {
 							modelEditor.clearMessageBox();
 							expandTable(g, table, toRender, true, null);
 						}
-	
+
 						@Override
 						protected void showAll() {
 							modelEditor.clearMessageBox();
@@ -1652,7 +1660,7 @@ public class GraphicalDataModelView extends JPanel {
 				}
 			}
 		}
-		
+
 		return result;
 	}
 
@@ -1676,7 +1684,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Checks whether some tables are still expanded.
-	 * 
+	 *
 	 * @param g the graph
 	 * @param toCheck set of tables to check
 	 */
@@ -1709,7 +1717,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Checks whether some tables are still collapsed.
-	 * 
+	 *
 	 * @param g the graph
 	 * @param toCheck set of tables to check
 	 */
@@ -1735,10 +1743,10 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Adds edges for all associations of a table.
-	 * 
+	 *
 	 * @param table the table
 	 * @param toRender is not null, the only association to make visible
-	 * 
+	 *
 	 * @return list of newly rendered tables
 	 */
 	private List<Table> addEdges(Graph g, Table table, Association toRender, List<Table> toCheck, boolean visibleDestinationRequired, Set<Table> allowedTables) {
@@ -1766,7 +1774,7 @@ public class GraphicalDataModelView extends JPanel {
 				if (showTable(g, a.destination)) {
 					result.add(a.destination);
 				}
-				String tooltip = a.getJoinCondition();
+				String tooltip = a.getUnrestrictedJoinCondition();
 				if (!associationIsUnique(a)) {
 					Node an = g.addNode();
 					an.set("association", a);
@@ -1797,7 +1805,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Searches another association with same destination.
-	 *  
+	 *
 	 * @param a an association
 	 * @return <code>true</code> if no other association is found
 	 */
@@ -1855,7 +1863,7 @@ public class GraphicalDataModelView extends JPanel {
 			}
 			super.itemClicked(item, e);
 		}
-		
+
 		/**
 		 * Zooms to fit.
 		 */
@@ -1881,11 +1889,17 @@ public class GraphicalDataModelView extends JPanel {
 	 * Renderer for {@link Association}s.
 	 */
 	private final class CompositeAssociationRenderer implements Renderer {
-		private AssociationRenderer associationRenderer = new AssociationRenderer(false);
-		private AssociationRenderer reversedAssociationRenderer = new AssociationRenderer(true);
-		private AssociationRenderer associationFullRenderer = new AssociationRenderer();
+		public CompositeAssociationRenderer(DataModel dataModel) {
+			associationRenderer = new AssociationRenderer(dataModel, false);
+			reversedAssociationRenderer = new AssociationRenderer(dataModel, true);
+			associationFullRenderer = new AssociationRenderer(dataModel);
+
+		}
+		private AssociationRenderer associationRenderer;
+		private AssociationRenderer reversedAssociationRenderer;
+		private AssociationRenderer associationFullRenderer;
 		public boolean useAssociationRendererForLocation = false;
-		
+
 		public boolean locatePointWithAssociationRenderer(Point2D p, VisualItem item) {
 			return associationRenderer.locatePoint(p, item);
 		}
@@ -1913,11 +1927,11 @@ public class GraphicalDataModelView extends JPanel {
 			associationFullRenderer.setBounds(item);
 		}
 	}
-	
+
 	/**
 	 * Looks up "show disabled associations" setting and
 	 * decides whether an association is visualizable.
-	 * 
+	 *
 	 * @param association the association to check
 	 * @return true if association is visualizable
 	 */
@@ -1996,7 +2010,7 @@ public class GraphicalDataModelView extends JPanel {
 						int size = model.getTables().size();
 						if (root != null) {
 							if (!modelEditor.extractionModelFrame.showDisabledAssociations()) {
-								size = root.closure(true).size();
+								size = root.closure().size();
 							} else {
 								size = root.unrestrictedClosure(new HashSet<Table>()).size();
 							}
@@ -2007,13 +2021,13 @@ public class GraphicalDataModelView extends JPanel {
 						}
 						if (numAll > 0) {
 							modelEditor.addMessageBox(new ExpansionLimitMessage(l, numAll) {
-			
+
 								@Override
 								protected void showMore() {
 									modelEditor.clearMessageBox();
 									expandAll(expandOnlyVisibleTables, true);
 								}
-			
+
 								@Override
 								protected void showAll() {
 									modelEditor.clearMessageBox();
@@ -2047,7 +2061,7 @@ public class GraphicalDataModelView extends JPanel {
 		}
 		return allowedTables;
 	}
-	
+
 	/**
 	 * Resets expanded/collapsed status of each visible table.
 	 */
@@ -2062,23 +2076,27 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Sets fix property of all visual nodes.
-	 * 
+	 *
 	 * @param fix the property value
 	 */
 	public void setFix(boolean fix) {
 		synchronized (visualization) {
-			for (int i = visualGraph.getNodeCount() - 1; i >= 0; --i) {
-				VisualItem n = (VisualItem) visualGraph.getNode(i);
-				n.setFixed(fix);
+			try {
+				for (int i = visualGraph.getNodeCount() - 1; i >= 0; --i) {
+					VisualItem n = (VisualItem) visualGraph.getNode(i);
+					n.setFixed(fix);
+				}
+			} catch (Exception e) {
+				// ignore
 			}
 		}
 	}
 
 	private Set<Table> reversedShowDetailsTables = new HashSet<Table>();
-	
+
 	/**
 	 * Decides whether to show details of a table.
-	 * 
+	 *
 	 * @param table the table
 	 * @return <code>true</code> iff details are shown
 	 */
@@ -2088,7 +2106,7 @@ public class GraphicalDataModelView extends JPanel {
 		}
 		return showTableDetails;
 	}
-	
+
 	/**
 	 * Updates table details mode.
 	 */
@@ -2104,7 +2122,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Gets all visible tables.
-	 * 
+	 *
 	 * @return set of all tables which are currently visible
 	 */
 	public Set<Table> getVisibleTables() {
@@ -2113,8 +2131,8 @@ public class GraphicalDataModelView extends JPanel {
 
 	private static DisplayExporter displayExporter = new DisplayExporter();
 	public boolean inImageExport = false;
-	
-	public void exportDisplayToImage() throws Exception {
+
+	public void exportDisplayToImage(File overviewImg, File overviewHtml) throws Exception {
 		Association oldAssociation = selectedAssociation;
 		Map<String, Integer> oldTablesOnPath = tablesOnPath;
 		try {
@@ -2123,7 +2141,7 @@ public class GraphicalDataModelView extends JPanel {
 				tablesOnPath = new HashMap<String, Integer>();
 				inImageExport = true;
 			}
-			displayExporter.export(display);
+			displayExporter.export(display, overviewImg, overviewHtml, model);
 		} finally {
 			synchronized (this) {
 				inImageExport = false;
@@ -2132,10 +2150,10 @@ public class GraphicalDataModelView extends JPanel {
 			}
 		}
 	}
-	
+
 	/**
 	 * Opens query builder dialog.
-	 * 
+	 *
 	 * @param table subject of query
 	 * @param usePath if <code>true</code>, immediately build query based on selected path
 	   */
@@ -2164,7 +2182,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Gets visibility of a table.
-	 * 
+	 *
 	 * @param table the table
 	 * @return <code>true</code> iff table is visible
 	 */
@@ -2174,7 +2192,7 @@ public class GraphicalDataModelView extends JPanel {
 
 	/**
 	 * Selects a table.
-	 * 
+	 *
 	 * @param table the table
 	 */
 	public void selectTable(Table table) {
@@ -2194,7 +2212,7 @@ public class GraphicalDataModelView extends JPanel {
 		setSelection(null);
 		setSelection(sa);
 	}
-	
+
 	public void setRestriction(final Association association, boolean ignore) {
 		setSelection(association);
 		if (ignore) {
@@ -2234,13 +2252,13 @@ public class GraphicalDataModelView extends JPanel {
 			display.invalidate();
 		}
 	}
-	
+
 	public void setAnimationEnabled(boolean enabled) {
 		synchronized (visualization) {
 			animate.setEnabled(enabled);
 		}
 	}
-		
+
 	private static final long serialVersionUID = -5938101712807557555L;
 
 }

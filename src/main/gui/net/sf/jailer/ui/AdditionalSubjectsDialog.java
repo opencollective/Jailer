@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package net.sf.jailer.ui;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridBagConstraints;
-import java.awt.Image;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,6 +36,7 @@ import javax.swing.JComponent;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.extractionmodel.ExtractionModel;
 import net.sf.jailer.extractionmodel.ExtractionModel.AdditionalSubject;
+import net.sf.jailer.extractionmodel.SubjectLimitDefinition;
 
 /**
  * Dialog for additional subjects.
@@ -55,12 +55,13 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 	private Set<Table> remaining = new HashSet<Table>();
 	private Set<Table> remainingIsolated = new HashSet<Table>();
 	private Set<Table> isolated = new HashSet<Table>();
-	
+	private SubjectLimitDefinition currentLimitDefinition;
+
 	@SuppressWarnings("serial")
 	private class AdditionalSubjectListEditor extends ListEditor<AdditionalSubject> {
 
 		public AdditionalSubjectListEditor() {
-			super(new String[] { "Table", "Condition" }, "Additional Subject", true, false, false);
+			super(new String[] { "Table", "Condition", "limit" }, "Additional Subject", true, false, false);
 			hideUpAndDownButton();
 		}
 
@@ -71,12 +72,13 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 
 		@Override
 		protected AdditionalSubject copy(AdditionalSubject element) {
-			return new AdditionalSubject(element.getSubject(), element.getCondition());
+			AdditionalSubject ld = new AdditionalSubject(element.getSubject(), element.getCondition(), element.getSubjectLimitDefinition());
+			return ld;
 		}
 
 		@Override
 		protected AdditionalSubject createNew() {
-			return new AdditionalSubject(null, "");
+			return new AdditionalSubject(null, "", new SubjectLimitDefinition(null, null));
 		}
 
 		@Override
@@ -88,6 +90,8 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 				detailsComboBox.setSelectedItem("");
 			}
 			detailsCondtition.setText(element.getCondition());
+			currentLimitDefinition = element.getSubjectLimitDefinition();
+        	limitLabel.setText(SubjectLimitEditor.subjectLimitDefinitionRender(currentLimitDefinition));
 			return detailsPanel;
 		}
 
@@ -110,11 +114,16 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 			}
 			element.setSubject(table);
 			element.setCondition(cond);
+			element.setSubjectLimitDefinition(currentLimitDefinition);
 		}
 
 		@Override
 		protected Object[] toColumnList(AdditionalSubject element, int index) {
-			return new String[] { getDisplayName(element), element.getCondition().length() > 0? ("Where " + element.getCondition()) : "all rows" };
+			return new String[] { 
+					getDisplayName(element),
+					element.getCondition().length() > 0 ? ("Where " + element.getCondition()) : "all rows",
+					element.getSubjectLimitDefinition().limit == null? "" : (element.getSubjectLimitDefinition().limit + " rows" + (element.getSubjectLimitDefinition().orderBy != null ? " (ordered)" : ""))
+				};
 		}
 
 		@Override
@@ -138,8 +147,8 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 			collectRemaining();
 		}
 		
-	};
-	
+	}
+
 	private AdditionalSubjectListEditor additionalSubjectListEditor;
 	
 	
@@ -266,7 +275,7 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 
 		Set<Table> closure;
 		if (subject != null) {
-			closure = subject.closure(true);
+			closure = subject.closure();
 		} else {
 			closure = new HashSet<Table>();
 		}
@@ -293,10 +302,14 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
         java.awt.GridBagConstraints gridBagConstraints;
 
         detailsPanel = new javax.swing.JPanel();
-        detailsComboBox = new JComboBox();
+        detailsComboBox = new JComboBox2();
         detailsLabel = new javax.swing.JLabel();
         detailsCondtition = new javax.swing.JTextField();
         detailsWhere = new javax.swing.JLabel();
+        jPanel13 = new javax.swing.JPanel();
+        limitLabel = new javax.swing.JLabel();
+        limitButton = new javax.swing.JToggleButton();
+        detailsWhere1 = new javax.swing.JLabel();
         jPanel3 = new javax.swing.JPanel();
         okButton = new javax.swing.JButton();
         cancelButton = new javax.swing.JButton();
@@ -315,6 +328,7 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 8);
         detailsPanel.add(detailsComboBox, gridBagConstraints);
 
         detailsLabel.setText("jLabel1");
@@ -331,11 +345,49 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
         gridBagConstraints.weightx = 1.0;
         detailsPanel.add(detailsCondtition, gridBagConstraints);
 
-        detailsWhere.setText("   Where ");
+        detailsWhere.setText("Where ");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 1;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         detailsPanel.add(detailsWhere, gridBagConstraints);
+
+        jPanel13.setLayout(new java.awt.GridBagLayout());
+
+        limitLabel.setText("<html><i>no limit</i></html>");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(0, 4, 0, 0);
+        jPanel13.add(limitLabel, gridBagConstraints);
+
+        limitButton.setText("Edit Limit");
+        limitButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                limitButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.weightx = 1.0;
+        jPanel13.add(limitButton, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 3;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.gridwidth = 4;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTH;
+        detailsPanel.add(jPanel13, gridBagConstraints);
+
+        detailsWhere1.setText("Limit ");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 2;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        detailsPanel.add(detailsWhere1, gridBagConstraints);
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         setTitle("Additional Subjects");
@@ -489,7 +541,7 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 			Collections.sort(tables);
 			
 			for (Table table: tables) {
-				subjects.add(new AdditionalSubject(table, ""));
+				subjects.add(new AdditionalSubject(table, "", new SubjectLimitDefinition(null, null)));
 			}
 			sortSubjects();
 			
@@ -514,7 +566,7 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 			Collections.sort(tables);
 			
 			for (Table table: tables) {
-				subjects.add(new AdditionalSubject(table, ""));
+				subjects.add(new AdditionalSubject(table, "", new SubjectLimitDefinition(null, null)));
 			}
 			sortSubjects();
 			
@@ -536,50 +588,64 @@ public class AdditionalSubjectsDialog extends javax.swing.JDialog {
 		collectRemaining();
     }//GEN-LAST:event_removeIsolatedlButtonActionPerformed
 
+    private SubjectLimitEditor subjectLimitEditor;
+
+    @SuppressWarnings("serial")
+	private void limitButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_limitButtonActionPerformed
+        if (limitButton.isSelected()) {
+            if (subjectLimitEditor == null) {
+                subjectLimitEditor = new SubjectLimitEditor(this, extractionModel.dataModel, true) {
+                    @Override
+                    protected void consume(SubjectLimitDefinition subjectLimitDefinition) {
+                        if (subjectLimitDefinition != null) {
+                        	currentLimitDefinition = subjectLimitDefinition;
+                        	limitLabel.setText(SubjectLimitEditor.subjectLimitDefinitionRender(subjectLimitDefinition));
+                        }
+                        limitButton.setSelected(false);
+                    }
+                };
+            }
+            limitLabel.setText(SubjectLimitEditor.subjectLimitDefinitionRender(currentLimitDefinition));
+            Table table = null;
+			Object item = detailsComboBox.getSelectedItem();
+			if (item != null) {
+				table = extractionModel.dataModel.getTableByDisplayName(item.toString());
+			}
+			subjectLimitEditor.edit(limitLabel, table, currentLimitDefinition);
+			limitButton.setSelected(false);
+        }
+    }//GEN-LAST:event_limitButtonActionPerformed
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton addAllButton;
     private javax.swing.JButton addIsolatedlButton;
     private javax.swing.JButton cancelButton;
-    private JComboBox detailsComboBox;
+    private JComboBox2 detailsComboBox;
     private javax.swing.JTextField detailsCondtition;
     private javax.swing.JLabel detailsLabel;
     private javax.swing.JPanel detailsPanel;
     private javax.swing.JLabel detailsWhere;
+    private javax.swing.JLabel detailsWhere1;
     private javax.swing.JPanel jPanel1;
+    private javax.swing.JPanel jPanel13;
     private javax.swing.JPanel jPanel3;
     private javax.swing.JScrollPane jScrollPane1;
+    private javax.swing.JToggleButton limitButton;
+    private javax.swing.JLabel limitLabel;
     private javax.swing.JButton okButton;
     private javax.swing.JButton removeAllButton;
     private javax.swing.JButton removeIsolatedlButton;
     private javax.swing.JPanel subjectsPanel;
     // End of variables declaration//GEN-END:variables
 
-	private ImageIcon minusImage = null;
 	private ImageIcon conditionEditorIcon = null;
 	private ImageIcon conditionEditorSelectedIcon = null;
 
 	private boolean ok;
 
 	{
-		String dir = "/net/sf/jailer/ui/resource";
-
 		// load image
-		try {
-			conditionEditorSelectedIcon = new ImageIcon(getClass().getResource(dir + "/edit_s.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			conditionEditorIcon = new ImageIcon(getClass().getResource(dir + "/edit.png"));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		try {
-			minusImage = new ImageIcon(new ImageIcon(getClass().getResource(
-					dir + "/minus.png")).getImage().getScaledInstance(22, 18,
-					Image.SCALE_SMOOTH));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		conditionEditorSelectedIcon = UIUtil.readImage("/edit_s.png");
+		conditionEditorIcon = UIUtil.readImage("/edit.png");
 	}
 }

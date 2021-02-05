@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -157,7 +157,7 @@ public class SQLDialect {
 		if (temporaryTableScope != WorkingTableScope.LOCAL_DATABASE) {
 			String schema = executionContext.getWorkingTableSchema();
 			if (schema != null) {
-				tableRef = new Quoting(session).requote(schema) + "." + tableRef;
+				tableRef = Quoting.getQuoting(session).requote(schema) + "." + tableRef;
 			}
 		}
 		return tableRef;

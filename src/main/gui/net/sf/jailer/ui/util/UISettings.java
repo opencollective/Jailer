@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ import net.sf.jailer.util.Pair;
  * 
  * @author Ralf Wisser
  */
-public class UISettings  {
+public class UISettings {
 
 	/**
 	 * Name of property (boolean) holding the PLAF setting.
@@ -87,15 +87,15 @@ public class UISettings  {
 	private static synchronized void loadUISettings() {
 		if (properties == null) {
 			properties = new HashMap<String, Object>();
-			File file = Environment.newFile(FILENAME);
-			if (file.exists()) {
-				try {
-					ObjectInputStream in = new ObjectInputStream(new FileInputStream(file));
-					properties = (Map<String, Object>) in.readObject();
-					in.close();
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
+		}
+		File file = Environment.newFile(FILENAME);
+		if (file.exists()) {
+			try {
+				ObjectInputStream in = new ObjectInputStream(new FileInputStream(file));
+				properties = (Map<String, Object>) in.readObject();
+				in.close();
+			} catch (Exception e) {
+				// ignore
 			}
 		}
 	}
@@ -106,15 +106,17 @@ public class UISettings  {
 	 * @param name the name of the property
 	 * @param value value to store
 	 */
-	public static synchronized void store(String name, Object value) {
+	public static void store(String name, Object value) {
 		loadUISettings();
 		properties.put(name, value);
 		File file = Environment.newFile(FILENAME);
 		for (int retry = 0; retry < 4; ++retry) {
 			try {
-				ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file));
-				out.writeObject(properties);
-				out.close();
+				synchronized (UISettings.class) {
+					ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file));
+					out.writeObject(properties);
+					out.close();
+				}
 				return;
 			} catch (Exception e) {
 				e.printStackTrace();

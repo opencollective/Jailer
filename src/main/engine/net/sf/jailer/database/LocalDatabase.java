@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,14 +50,26 @@ public class LocalDatabase {
 		this.databaseFolder = new File(Configuration.getInstance().getTempFileFolder() + File.separator + UUID.randomUUID().toString()).getAbsolutePath();
 		new File(databaseFolder).mkdirs();
 		BasicDataSource dataSource;
+		URL[] urlArray;
+		FileNotFoundException urlException = null;
 		try {
-			dataSource = new BasicDataSource(driverClassName, urlPattern.replace("%s", databaseFolder + File.separator + "local"), user, password, 0, new URL[0]);
-		} catch (Exception e) {
-			dataSource = new BasicDataSource(driverClassName, urlPattern.replace("%s", databaseFolder + File.separator + "local"), user, password, 0, ClasspathUtil.toURLArray(jarfile, null, null, null));
+			urlArray = ClasspathUtil.toURLArray(jarfile, null, null, null);
+		} catch (FileNotFoundException e) {
+			urlArray = new URL[0];
+			urlException = new FileNotFoundException(e.getMessage() + ". This file is required for using WorkingTableScope.LOCAL_DATABASE. Make the file available or add it to the classpath.");
+		}
+		if (urlException != null) {
+			try {
+				dataSource = new BasicDataSource(driverClassName, urlPattern.replace("%s", databaseFolder + File.separator + "local"), user, password, 0, urlArray);
+			} catch (Exception e) {
+				throw urlException;
+			}
+		} else {
+			dataSource = new BasicDataSource(driverClassName, urlPattern.replace("%s", databaseFolder + File.separator + "local"), user, password, 0, urlArray);
 		}
 		session = new Session(dataSource, dataSource.dbms, Connection.TRANSACTION_READ_UNCOMMITTED, null, false, true);
 	}
-	
+
 	/**
 	 * Shut local database down. Remove all database files.
 	 */

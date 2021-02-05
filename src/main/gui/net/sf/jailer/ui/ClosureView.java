@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,11 +36,13 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -63,10 +65,15 @@ import javax.swing.JPopupMenu;
 import javax.swing.JSeparator;
 import javax.swing.JTable;
 import javax.swing.JToggleButton;
+import javax.swing.RowSorter;
+import javax.swing.RowSorter.SortKey;
+import javax.swing.SortOrder;
 import javax.swing.SwingUtilities;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableModel;
 
 import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.DataModel;
@@ -92,22 +99,22 @@ public abstract class ClosureView extends javax.swing.JDialog {
 	 * Number of tables in a closure-table's line.
 	 */
 	private int tablesPerLine = 8;
-	
+
 	/**
 	 * The extraction model editor.
 	 */
 	private final ExtractionModelEditor extractionModelEditor;
-	
+
 	/**
 	 * Currently selected table (in closure-table).
 	 */
 	private String selectedTable;
-	
+
 	/**
 	 * Background colors per row.
 	 */
 	private final List<Color> bgColor = new ArrayList<Color>();
-	
+
 	/**
 	 * Holds infos about a cell in the closure-table.
 	 */
@@ -128,24 +135,24 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			}
 		}
 		Table table;
-	};
+	}
 
 	/**
 	 * Holds infos about a cell in the closure-table.
 	 */
 	private Map<String, CellInfo> cellInfo = new HashMap<String, CellInfo>();
 	private Set<Pair<String, String>> dependencies = new HashSet<Pair<String,String>>();
-	
-	private final JComboBox rootTable;
-	
-	/** Creates new form FindDialog 
+
+	private final JComboBox2 rootTable;
+
+	/** Creates new form FindDialog
 	 * @param rootTable */
-	public ClosureView(ExtractionModelEditor extractionModelEditor, JComboBox rootTable) {
+	public ClosureView(ExtractionModelEditor extractionModelEditor, JComboBox2 rootTable) {
 		super();
 		this.extractionModelEditor = extractionModelEditor;
 		this.rootTable = rootTable;
 		initComponents();
-		
+
 		AutoCompletion.enable(searchComboBox);
 		searchComboBox.getEditor().getEditorComponent().addKeyListener(new KeyListener() {
 			@Override
@@ -164,19 +171,19 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		GridBagConstraints gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 1;
         gridBagConstraints.gridy = 2;
-		final javax.swing.JComboBox comboBox1 = searchComboBox;
+		final JComboBox2 comboBox1 = searchComboBox;
         JToggleButton searchButton = StringSearchPanel.createSearchButton(extractionModelEditor.extractionModelFrame, comboBox1, "Find Table", new Runnable() {
 			@Override
 			public void run() {
 				findButtonActionPerformed(null);
 			}
 		}, null, null, null, false, null, false);
-		tablePanel.add(searchButton, gridBagConstraints);
-        
+        closureTablePanel.add(searchButton, gridBagConstraints);
+
         searchComboBox.setVisible(false);
         findButton.setVisible(false);
         searchButton.setText("Find Table");
-		
+
 		AutoCompletion.enable(findPathComboBox);
 		findPathComboBox.getEditor().getEditorComponent().addKeyListener(new KeyListener() {
 			@Override
@@ -200,8 +207,8 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		if (currentSelection instanceof String) {
 			source = getDataModel().getTableByDisplayName((String) currentSelection);
 		}
-        final javax.swing.JComboBox comboBox = findPathComboBox;
-        JToggleButton stFindButtonButton = StringSearchPanel.createSearchButton(extractionModelEditor.extractionModelFrame, comboBox, 
+        final JComboBox2 comboBox = findPathComboBox;
+        JToggleButton stFindButtonButton = StringSearchPanel.createSearchButton(extractionModelEditor.extractionModelFrame, comboBox,
     		new Object() {
 				public String toString() {
 					Table source = null;
@@ -223,7 +230,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				public JComponent create(final StringSearchPanel searchPanel) {
 					HistoryPanel historyPanel = new HistoryPanel(ClosureView.this.getSelectedTable(), getDataModel()) {
 						private static final long serialVersionUID = 1L;
-	
+
 						@Override
 						protected void close() {
 							searchPanel.close();
@@ -236,13 +243,13 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			        return historyPanel;
 				}
 			}, false);
-		tablePanel.add(stFindButtonButton, gridBagConstraints);
-        
+		closureTablePanel.add(stFindButtonButton, gridBagConstraints);
+
         findPathComboBox.setVisible(false);
         findPathButton.setVisible(false);
         stFindButtonButton.setText("Find Path to...");
-		
-		columnsComboBox.setModel(new DefaultComboBoxModel<Integer>(new Integer[] { 
+
+		columnsComboBox.setModel(new DefaultComboBoxModel<Integer>(new Integer[] {
 				4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
 		}));
 		columnsComboBox.setSelectedItem(new Integer(tablesPerLine));
@@ -258,9 +265,9 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		showOnlyEnabledCheckBox.setMnemonic(KeyEvent.VK_S);
 //        disableAssocButton.setMnemonic(KeyEvent.VK_D);
 //        disableAssocButton.setEnabled(false);
-		
+
 //        tableSelection.setMaximumRowCount(22);
-		
+
 		closureTable = new JTable() {
 			private static final long serialVersionUID = 8960056200057023368L;
 
@@ -274,11 +281,11 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				Graphics2D g2d = (Graphics2D) graphics;
 				CellInfo selectionInfo = cellInfo.get(selectedTable);
 				if (selectionInfo == null) return;
-				
+
 				paint(g2d, selectionInfo, false, new HashSet<CellInfo>());
 				paint(g2d, selectionInfo, true, new HashSet<CellInfo>());
 			}
-			
+
 			private void paint(Graphics2D g2d, CellInfo selectionInfo, boolean drawDependencies, Set<CellInfo> painted) {
 				if (painted.contains(selectionInfo)) {
 					return;
@@ -299,7 +306,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 						y[1] = ((int) r.getCenterY());
 						Color color = new Color(0, 0, 245, 60);
 						g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-	
+
 						if (selectionInfo.ignored) {
 							BasicStroke stroke = new BasicStroke(3);
 							g2d.setStroke(new BasicStroke(stroke.getLineWidth(), stroke.getEndCap(), stroke.getLineJoin(), stroke.getMiterLimit(), new float[] { 2f, 6f },
@@ -320,21 +327,31 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		};
 		closureTable.setShowGrid(false);
 		closureTable.setSurrendersFocusOnKeystroke(true);
-        closureTable.getTableHeader().setReorderingAllowed(false);
+		closureTable.getTableHeader().setReorderingAllowed(false);
 		jScrollPane1.setViewportView(closureTable);
 
-		closureTable.addMouseListener(new MouseListener() {
+		MouseListener ml = new MouseListener() {
 			@Override
 			public void mouseClicked(final MouseEvent e) {
 			}
 			@Override
 			public void mouseReleased(MouseEvent e) {
 				// context menu
+				if (!(e.getComponent() instanceof JTable)) {
+					return;
+				}
+				JTable theTable = (JTable) e.getComponent();
 				if (SwingUtilities.isRightMouseButton(e)) {
-					int row = closureTable.rowAtPoint(e.getPoint());
-					int column = closureTable.columnAtPoint(e.getPoint());
+					int row = theTable.rowAtPoint(e.getPoint());
+					int column = theTable.columnAtPoint(e.getPoint());
 					if (row < 0 || column < 0) return;
-					Object value = closureTable.getModel().getValueAt(row, column);
+					Object value;
+					RowSorter<? extends TableModel> rowSorter = theTable.getRowSorter();
+					if (theTable != neighborTable) {
+						value = theTable.getModel().getValueAt(row, column);
+					} else {
+						value = theTable.getModel().getValueAt(rowSorter.convertRowIndexToModel(row), column);
+					}
 					if (value == null || !(value instanceof String)) return;
 					Table table = getDataModel().getTableByDisplayName((String) value);
 					if (table != null) {
@@ -343,13 +360,19 @@ public abstract class ClosureView extends javax.swing.JDialog {
 					}
 				}
 				if (SwingUtilities.isLeftMouseButton(e)) {
-					int row = closureTable.rowAtPoint(e.getPoint());
-					int column = closureTable.columnAtPoint(e.getPoint());
+					int row = theTable.rowAtPoint(e.getPoint());
+					int column = theTable.columnAtPoint(e.getPoint());
 					if (row < 0 || column < 0) return;
-					
-					final Rectangle cellRect = closureTable.getCellRect(row, column, false);
-					
-					Object value = closureTable.getModel().getValueAt(row, column);
+
+					final Rectangle cellRect = theTable.getCellRect(row, column, false);
+
+					Object value;
+					RowSorter<? extends TableModel> rowSorter = theTable.getRowSorter();
+					if (theTable != neighborTable) {
+						value = theTable.getModel().getValueAt(row, column);
+					} else {
+						value = theTable.getModel().getValueAt(rowSorter.convertRowIndexToModel(row), column);
+					}
 					if (value == null || !(value instanceof String)) return;
 					final Table table = getDataModel().getTableByDisplayName((String) value);
 					if (table != null) {
@@ -362,7 +385,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 							}
 						});
 						restrictAll.setEnabled(ClosureView.this.extractionModelEditor.isIgnoreAllApplicable(table));
-						
+
 						JMenuItem removeRestrictions = new JMenuItem("Remove all restrictions");
 						removeRestrictions.addActionListener(new ActionListener () {
 							@Override
@@ -375,10 +398,10 @@ public abstract class ClosureView extends javax.swing.JDialog {
 
 						JMenu restrict = new JScrollMenu("Disable association...");
 						restrict.setToolTipText("disables an association with this table");
-						
+
 						JMenu remove = new JScrollMenu("Remove restrictions on...");
 						remove.setToolTipText("removes all restrictions on an association with this table");
-						
+
 						List<Association> aLDisable = new ArrayList<Association>();
 						List<Association> aLEnable = new ArrayList<Association>();
 						for (Association association: table.associations) {
@@ -387,7 +410,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 							}
 							aLEnable.add(association);
 						}
-						
+
 						Map<String, Association> namedAssoc;
 						namedAssoc = sortedNamed(aLDisable);
 						boolean enab;
@@ -426,18 +449,23 @@ public abstract class ClosureView extends javax.swing.JDialog {
 							});
 						}
 						remove.setEnabled(enab);
-						
+
 						final JPopupMenu popup = new JScrollPopupMenu();
 						popup.add(restrictAll);
 						popup.add(removeRestrictions);
 						popup.add(new JSeparator());
 						popup.add(restrict);
 						popup.add(remove);
-						
+
 						if (cellInfo.containsKey(value)) {
-							selectTableCell(column, row);
+							if (theTable == neighborTable) {
+								CellInfo ci = cellInfo.get(value);
+								selectTableCell(ci.column, ci.row);
+							} else {
+								selectTableCell(column, row);
+							}
 						}
-						
+
 						ClosureView.this.extractionModelEditor.graphView.createPopupMenu(table, null, false);
 						popup.show(e.getComponent(), cellRect.x, cellRect.y + cellRect.height + 4);
 					}
@@ -452,17 +480,19 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			@Override
 			public void mousePressed(MouseEvent e) {
 			}
-		});
-		
+		};
+		closureTable.addMouseListener(ml);
+		neighborTable.addMouseListener(ml);
+
 		searchComboBox.setMaximumRowCount(30);
-		
+
 		final TableCellRenderer defaultTableCellRenderer = closureTable.getDefaultRenderer(String.class);
 		closureTable.setDefaultRenderer(Object.class, new TableCellRenderer() {
 			private Font font = new JLabel("normal").getFont();
 			private Font normal = new Font(font.getName(), font.getStyle() & ~Font.BOLD, font.getSize());
 			private Font bold = new Font(font.getName(), font.getStyle() | Font.BOLD, font.getSize());
 			// private Font italic = new Font(font.getName(), font.getStyle() | Font.ITALIC, font.getSize());
-			
+
 			@Override
 			public Component getTableCellRendererComponent(JTable table,
 					Object value, boolean isSelected, boolean hasFocus,
@@ -485,7 +515,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 					} else {
 						((JLabel) render).setToolTipText(null);
 					}
-					if (row == 0) {
+					if (row == 0 && table != neighborTable) {
 						((JLabel) render).setFont(bold);
 					}
 					if (cellInfo != null && selectedTable != null) {
@@ -494,7 +524,10 @@ public abstract class ClosureView extends javax.swing.JDialog {
 							((JLabel) render).setBackground(new Color(255, 230, 200));
 						}
 					}
-					Table t = getDataModel().getTableByDisplayName((String) value);
+					if (table == neighborTable) {
+						((JLabel) render).setBackground(row % 2 == 0? BG1 : BG2);
+					}
+					Table t = value instanceof String? getDataModel().getTableByDisplayName((String) value) : null;
 					if (t != null) {
 						boolean allDisabled = true;
 						boolean someRestricted = false;
@@ -523,12 +556,28 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			}
 		});
 //		closureTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
 		closureTable.setRowSelectionAllowed(false);
+
+		neighborTable.setRowSelectionAllowed(false);
+		neighborTable.setIntercellSpacing(new Dimension(0, 0));
+		neighborTable.setDefaultRenderer(Object.class, closureTable.getDefaultRenderer(Object.class));
+		neighborTable.setAutoCreateRowSorter(true);
+		neighborTable.getTableHeader().setReorderingAllowed(false);
+		neighborTable.getTableHeader().setToolTipText("<html>The degree of a table is the total number of adjacent tables<br>that can be reached directly with an enabled association.</html>");
+		try {
+			List<SortKey> keys = new ArrayList<SortKey>();
+			keys.add(new SortKey(1, SortOrder.DESCENDING));
+			neighborTable.getRowSorter().setSortKeys(keys);
+		} catch (Exception e) {
+			e.printStackTrace();
+			// ignore
+		}
+
 		rootTable.addItemListener(new java.awt.event.ItemListener() {
 			@Override
 			public void itemStateChanged(java.awt.event.ItemEvent evt) {
-				Table table = getDataModel().getTableByDisplayName((String) ClosureView.this.rootTable.getSelectedItem());
-				refresh(table);
+				refreshClear();
 			}
 		});
 		if (jScrollPane2.getHorizontalScrollBar() != null) {
@@ -565,39 +614,59 @@ public abstract class ClosureView extends javax.swing.JDialog {
 	            }
             }
         }
-        nb_same.add("<b>" + tableName + "</b>");
+        nb_same.add(tableName);
 //        int maxWidth = 8;
         String sep = "";
 //        if (nb_up.size() > maxWidth || nb_same.size() > maxWidth || nb_down.size() > maxWidth) {
 //        	sep = "<tr><td></td></tr>";
 //        }
+        int max = Math.max(nb_up.size(), Math.max(nb_same.size(), nb_down.size()));
         String tip = "<html>"
         	+ "<table cellspacing=0 cellpadding=0>"
-        	+ tipJoin(nb_up, theCellInfo.level - 1)
+        	+ tipJoin(nb_up, theCellInfo.level - 1, max, null)
         	+ sep
-        	+ tipJoin(nb_same, theCellInfo.level)
+        	+ tipJoin(nb_same, theCellInfo.level, max, tableName)
         	+ sep
-        	+ tipJoin(nb_down, theCellInfo.level + 1)
-        	+ "</table>";
+        	+ tipJoin(nb_down, theCellInfo.level + 1, max, null)
+        	+ "</table></html>";
         return tip;
     }
 
-    private String tipJoin(Set<String> tipList, int level) {
+    private String tipJoin(Set<String> tipSet, int level, int max, String tableName) {
+    	if (tipSet.isEmpty()) {
+    		return "";
+    	}
     	StringBuilder sb = new StringBuilder();
     	int w = 0;
     	int l = 0;
     	int i = 0;
+    	int size = tipSet.size();
+		List<String> tipList = new ArrayList<String>(tipSet);
+    	while (tipList.size() <= max) {
+    		tipList.add("");
+    	}
+    	if (tableName != null && tipList.remove(tableName)) {
+    		tipList.add(0, tableName);
+    	}
     	for (String tip: tipList) {
     		if (++w > 8) {
     			w = 0;
     			if (++l >= 1) {
-    	    		sb.append("<td>&nbsp;<i>" + (tipList.size() - i) + " more...</i>&nbsp;</td>");
+    	    		if (size > i) {
+    	    			sb.append("<td>&nbsp;<i>" + (size - i) + " more...</i>&nbsp;</td>");
+    	    		}
     	    		break;
     			}
     			sb.append("</tr><tr><td></td>");
     		}
-    		sb.append("<td>&nbsp;" + tip + "&nbsp;</td>");
-    		++i;
+    		if (tip.equals(tableName)) {
+    			sb.append("<td><b>&nbsp;" + tip + "&nbsp;</b></td>");
+    		} else {
+    			sb.append("<td>&nbsp;" + tip + "&nbsp;</td>");
+    		}
+	  		if (tip.length() > 0) {
+	  			++i;
+	  		}
     	}
     	if (sb.length() == 0) {
     		return "";
@@ -607,7 +676,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 
 	protected SortedMap<String, Association> sortedNamed(List<Association> aList) {
 		SortedMap<String, Association> result = new TreeMap<String, Association>();
-		
+
 		for (Association a: aList) {
 			boolean isDup = false;
 			for (Association a2: aList) {
@@ -688,6 +757,9 @@ public abstract class ClosureView extends javax.swing.JDialog {
 								return;
 							}
 						}
+						Rectangle aRect = closureTable.getCellRect(row, col, true);
+						aRect.setBounds(aRect.x, Math.max(0, aRect.y - aRect.height), aRect.width, aRect.height * 3);
+						closureTable.scrollRectToVisible(aRect);
 						extractionModelEditor.incCaptureLevel();
 						try {
 							if (!toSelect.isEmpty()) {
@@ -715,10 +787,10 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			}
 		}
 	}
-	
+
 	/**
 	 * Gets current data model.
-	 * 
+	 *
 	 * @return current data model
 	 */
 	private DataModel getDataModel() {
@@ -726,49 +798,13 @@ public abstract class ClosureView extends javax.swing.JDialog {
 	}
 
 	/**
-	 * Make {@link #refresh(Table)} reentrant.
-	 */
-	private boolean refreshing = false;
-	
-	/**
 	 * Refreshes the dialog.
-	 * 
-	 * @param tableToSelect the table to select initially or <code>null</code> to keep the current selection
 	 */
-	public void refresh(Table tableToSelect) {
-		if (refreshing) {
-			return;
-		}
-		refreshing = true;
-		
+	public void refreshClear() {
 		selectedTable = null;
-		
-		// table list model
-		if (tableToSelect == null) {
-			Object currentSelection = rootTable.getSelectedItem();
-			if (currentSelection instanceof String) {
-				tableToSelect = getDataModel().getTableByDisplayName((String) currentSelection);
-			}
-		}
-		Vector<String> tableNames = new Vector<String>();
-		for (Table table: getDataModel().getTables()) {
-			tableNames.add(getDataModel().getDisplayName(table));
-		}
-		Collections.sort(tableNames);
-//    	DefaultComboBoxModel model = new DefaultComboBoxModel(tableNames);
-//        tableSelection.setModel(model);
-//    	if (tableToSelect != null) {
-//    		tableSelection.setSelectedItem(getDataModel().getDisplayName(tableToSelect));
-//    	} else {
-//    		tableSelection.setSelectedItem(0);
-//    	}
-		
-		// table model
 		refreshTableModel(null);
-
-		refreshing = false;
 	}
-	
+
 	/**
 	 * Refreshes the dialog after the model has been changed.
 	 */
@@ -780,16 +816,21 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		} else {
 			selectedTable = null;
 		}
-//    	disableAssocButton.setEnabled(false);
 		repaintClosureView();
 	}
-	
+
 	private Map<Table, Integer> currentForcedDistance = null;
-	
+
+	private final Color BG1 = new Color(255, 255, 255);
+	private final Color BG2 = new Color(242, 255, 242);
+	private final Color BG3 = new Color(255, 255, 240);
+	private final Color BG4 = new Color(220, 220, 220);
+	private final Color BG5 = new Color(255, 240, 240);
+
 	/**
 	 * Refreshes the table model.
-	 * @param excludedTables 
-	 * @param path 
+	 * @param excludedTables
+	 * @param path
 	 */
 	private void refreshTableModel(Map<Table, Integer> forcedDistance) {
 		cellInfo.clear();
@@ -800,6 +841,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		}
 		Table selectedTable = getSelectedTable();
 		refreshAssociationView(selectedTable);
+		refreshNeigborView(selectedTable);
 
 		Object[] columns = new Object[tablesPerLine + 1];
 		for (int i = 0; i < columns.length; ++i) {
@@ -807,9 +849,9 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		}
 		columns[0] = "Distance";
 		columns[1] = "Table";
-		
+
 		List<Object[]> data = new ArrayList<Object[]>();
-		
+
 		Set<String> visited = new TreeSet<String>();
 		List<String> currentLine = new ArrayList<String>();
 		if (selectedTable != null) {
@@ -822,20 +864,15 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			cellInfo.table = selectedTable;
 			this.cellInfo.put(displayName, cellInfo);
 		}
-		
+
 		int distance = 0;
 		final int OMEGA = Integer.MAX_VALUE / 2;
 		boolean isolated = false;
-		
-		final Color BG1 = new Color(255, 255, 255);
-		final Color BG2 = new Color(242, 255, 242);
-		final Color BG3 = new Color(255, 255, 240);
-		final Color BG4 = new Color(220, 220, 220);
-		final Color BG5 = new Color(255, 240, 240);
+
 		bgColor.clear();
-		
+
 		TreeSet<String> nonIsolated = new TreeSet<String>();
-		
+
 		while (!currentLine.isEmpty()) {
 
 			// add current line to table model
@@ -845,7 +882,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				data.add(lineAsObjects);
 				bgColor.add(BG4);
 			}
-			
+
 			Collections.sort(currentLine);
 			Object[] lineAsObjects = new Object[tablesPerLine + 1];
 			Arrays.fill(lineAsObjects, "");
@@ -858,7 +895,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 					if (cellInfo != null) {
 						cellInfo.column = col;
 					}
-					lineAsObjects[col++] = t;					
+					lineAsObjects[col++] = t;
 				} else {
 					data.add(lineAsObjects);
 					bgColor.add(color);
@@ -878,7 +915,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				data.add(lineAsObjects);
 				bgColor.add(color);
 			}
-			
+
 			// get next line
 			List<String> nextLine = new ArrayList<String>();
 
@@ -898,7 +935,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
                         	}
                         }
 						String displayName = getDataModel().getDisplayName(association.destination);
-                        if (!association.isIgnored() || 
+                        if (!association.isIgnored() ||
                         		(forcedDistance.containsKey(association.source) && forcedDistance.containsKey(association.destination))) {
 							if (!visited.contains(displayName)) {
 								nextLine.add(displayName);
@@ -975,17 +1012,17 @@ public abstract class ClosureView extends javax.swing.JDialog {
 					}
 				}
 			}
-			
+
 			currentLine = nextLine;
 		}
-		
+
 		if (selectedTable != null) {
 			CellInfo cInfo = cellInfo.get(this.selectedTable);
 			if (cInfo != null) {
 				cInfo.select();
 			}
 		}
-		
+
 		Object[][] dataArray = data.toArray(new Object[data.size()][]);
 		DefaultTableModel tableModel = new DefaultTableModel(dataArray, columns) {
 			@Override
@@ -996,14 +1033,20 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		};
 		closureTable.setModel(tableModel);
 
+		int lastNonEmptyI = -1;
+		Deque<TableColumn> toDelete = new ArrayDeque<TableColumn>();
 		for (int i = 0; i < closureTable.getColumnCount(); i++) {
 			TableColumn column = closureTable.getColumnModel().getColumn(i);
 			int width = 1;
-			
+			boolean isEmpty = true;
+
 			Component comp = closureTable.getDefaultRenderer(String.class).
 									getTableCellRendererComponent(
 											closureTable, column.getHeaderValue(),
 											false, false, 0, i);
+			if (column.getHeaderValue() != null && !"".equals(column.getHeaderValue())) {
+				isEmpty = false;
+			}
 			width = Math.max(width, comp.getPreferredSize().width);
 
 			for (int line = 0; line < dataArray.length; ++line) {
@@ -1012,13 +1055,31 @@ public abstract class ClosureView extends javax.swing.JDialog {
 										 closureTable, dataArray[line][i],
 									 false, false, line, i);
 				width = Math.max(width, comp.getPreferredSize().width);
+				if (dataArray[line][i] != null && !"".equals(dataArray[line][i])) {
+					isEmpty = false;
+				}
 			}
-			
+
 			column.setPreferredWidth(width);
+			if (isEmpty) {
+				if (lastNonEmptyI >= 0) {
+					closureTable.getColumnModel().getColumn(lastNonEmptyI).setPreferredWidth(width + closureTable.getColumnModel().getColumn(lastNonEmptyI).getPreferredWidth());
+					toDelete.push(column);
+				}
+			} else {
+				lastNonEmptyI = i;
+			}
+		}
+		while (!toDelete.isEmpty()) {
+			closureTable.getColumnModel().removeColumn(toDelete.pop());
+		}
+		for (int i = 0; i < closureTable.getColumnCount() - 1; i++) {
+            TableColumn column = closureTable.getColumnModel().getColumn(i);
+            column.setMaxWidth(column.getPreferredWidth());
 		}
 		closureTable.setIntercellSpacing(new Dimension(0, 0));
 //    	disableAssocButton.setEnabled(false);
-		
+
 		Vector<String> vector = new Vector<String>();
 		vector.add("");
 		vector.addAll(nonIsolated);
@@ -1041,7 +1102,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 	 * Names of associations which have been recently disabled and therefore are still be visible.
 	 */
 	private Set<String> editedAssociations = new TreeSet<String>();
-	
+
 	/**
 	 * Names of associations in the closure ordered by distance.
 	 */
@@ -1051,16 +1112,16 @@ public abstract class ClosureView extends javax.swing.JDialog {
 	 * All components of the association-closure render.
 	 */
 	private Collection<JComponent> associationClosureRender = new ArrayList<JComponent>();
-	
+
 	/**
 	 * Name of focused table for which no association closure size limit exists.
 	 */
 	private String noAssocLimitTableName;
 	private final int MAX_ASSOC_CLOSURE_SIZE_LIMIT = 200;
-	
+
 	/**
 	 * Refreshes the associations view.
-	 * 
+	 *
 	 * @param selectedTable selected table (focus) or <code>null</code>
 	 */
 	private void refreshAssociationView(Table selectedTable) {
@@ -1073,20 +1134,20 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			assocViewPanel.remove(c);
 		}
 		associationClosureRender.clear();
-		
+
 		createAssociationClosure(selectedTable);
-		
+
 		int y = 3;
 		int surplus = 0;
-		
+
 		GridBagConstraints gridBagConstraints;
 		int distance = 0;
 		boolean limitExceeded = false;
 		final Table st = getSelectedTable();
 		boolean unlimited = noAssocLimitTableName != null && st != null && noAssocLimitTableName.equals(st.getName());
-		Color bgColor = Color.WHITE;
 		for (List<String> assocList: associationClosure) {
 			boolean firstTime = true;
+			Color bgColor;
 			if (distance % 2 == 0) {
 				bgColor = new java.awt.Color(240, 255, 255);
 			} else {
@@ -1119,7 +1180,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				gridBagConstraints.gridy = y;
 				gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
 				assocViewPanel.add(l, gridBagConstraints);
-	
+
 				l = createLabel(y, association.source.getName(), assocName, bgc, " " + getDataModel().getDisplayName(association.source), false);
 				l.setOpaque(true);
 				l.setFont(font);
@@ -1128,7 +1189,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				gridBagConstraints.gridy = y;
 				gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
 				assocViewPanel.add(l, gridBagConstraints);
-				
+
 				l = createLabel(y, association.destination.getName(), assocName, bgc, " " + getDataModel().getDisplayName(association.destination), false);
 				l.setOpaque(true);
 				l.setFont(font);
@@ -1177,7 +1238,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				gridBagConstraints.gridy = y;
 				gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
 				assocViewPanel.add(l, gridBagConstraints);
-				
+
 				++y;
 			}
 			if (firstTime && !limitExceeded) {
@@ -1190,7 +1251,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 				gridBagConstraints.gridy = y;
 				gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
 				assocViewPanel.add(l, gridBagConstraints);
-	
+
 				l = createLabel(y, null, null, bgColor, " no non-dependency association", true);
 				l.setOpaque(true);
 				l.setFont(nonbold);
@@ -1244,7 +1305,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		assocViewPanel.add(l, gridBagConstraints);
 		associationClosureRender.add(l);
 	}
-	
+
 	private JLabel createLabel(final int y, final String tableName, final String assocName, Color bgColor, String text, boolean unbounded) {
 		final int MAX_TEXT_LENGTH = 22;
 		final JLabel label = new JLabel();
@@ -1302,7 +1363,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 
 	/**
 	 * Collects names of associations in the closure ordered by distance into {@link #associationClosure}.
-	 *  
+	 *
 	 * @param selectedTable focus
 	 */
 	private void createAssociationClosure(Table selectedTable) {
@@ -1314,8 +1375,8 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			for (Association a: selectedTable.associations) {
 				next.add(a.reversalAssociation);
 			}
-			
-			Set<Table> closure = selectedTable.closure(true);
+
+			Set<Table> closure = selectedTable.closure();
 			while (!next.isEmpty()) {
 				Set<Association> neighbors  = new HashSet<Association>();
 				List<String> assocList = new ArrayList<String>();
@@ -1376,6 +1437,55 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		}
 	}
 
+	private void refreshNeigborView(Table selectedTable) {
+		DefaultTableModel tableModel = new DefaultTableModel(new Object[] { "Table", "Degree" }, 0) {
+			@Override
+			public boolean isCellEditable(int row, int column) {
+				return false;
+			}
+			@Override
+            public Class<?> getColumnClass(int columnIndex) {
+				if(columnIndex == 1){
+                    return Integer.class;
+                }
+                return super.getColumnClass(columnIndex);
+            }
+			private static final long serialVersionUID = -6639310191624899380L;
+		};
+
+		while (tableModel.getRowCount() > 0) {
+			tableModel.removeRow(0);
+		}
+		if (selectedTable != null) {
+			Set<Table> closure = selectedTable.closure();
+			for (Table table: closure) {
+				Set<Table> neighbors = new HashSet<Table>();
+				for (Association a: table.associations) {
+					if (a.getJoinCondition() != null) {
+						neighbors.add(a.destination);
+					}
+				}
+				tableModel.addRow(new Object[] { getDataModel().getDisplayName(table), neighbors.size() });
+			}
+		}
+
+		List<? extends SortKey> keys = null;
+		try {
+			keys = neighborTable.getRowSorter().getSortKeys();
+		} catch (Exception e) {
+			// ignore
+		}
+		neighborTable.setModel(tableModel);
+		adjustTableColumnsWidth(neighborTable);
+		if (keys != null) {
+			try {
+				neighborTable.getRowSorter().setSortKeys(keys);
+			} catch (Exception e) {
+				// ignore
+			}
+		}
+	}
+
 	/** This method is called from within the constructor to
 	 * initialize the form.
 	 * WARNING: Do NOT modify this code. The content of this method is
@@ -1389,14 +1499,19 @@ public abstract class ClosureView extends javax.swing.JDialog {
         tabbedPane = new javax.swing.JTabbedPane();
         tablePane = new javax.swing.JPanel();
         tablePanel = new javax.swing.JPanel();
+        jPanel1 = new javax.swing.JPanel();
+        jSplitPane1 = new javax.swing.JSplitPane();
+        closureTablePanel = new javax.swing.JPanel();
         jScrollPane1 = new javax.swing.JScrollPane();
         closureTable = new javax.swing.JTable();
-        searchComboBox = new JComboBox();
+        searchComboBox = new JComboBox2();
         jLabel7 = new javax.swing.JLabel();
-        columnsComboBox = new JComboBox();
+        columnsComboBox = new JComboBox2();
         findButton = new javax.swing.JButton();
-        findPathComboBox = new JComboBox();
+        findPathComboBox = new JComboBox2();
         findPathButton = new javax.swing.JButton();
+        jScrollPane3 = new javax.swing.JScrollPane();
+        neighborTable = new javax.swing.JTable();
         associationPane = new javax.swing.JPanel();
         associationPanel = new javax.swing.JPanel();
         jScrollPane2 = new javax.swing.JScrollPane();
@@ -1429,6 +1544,14 @@ public abstract class ClosureView extends javax.swing.JDialog {
 
         tablePanel.setLayout(new java.awt.GridBagLayout());
 
+        jPanel1.setLayout(new java.awt.GridBagLayout());
+
+        jSplitPane1.setResizeWeight(0.75);
+        jSplitPane1.setContinuousLayout(true);
+        jSplitPane1.setOneTouchExpandable(true);
+
+        closureTablePanel.setLayout(new java.awt.GridBagLayout());
+
         jScrollPane1.setMinimumSize(new java.awt.Dimension(23, 64));
 
         closureTable.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 0, 0, 0));
@@ -1456,7 +1579,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
         gridBagConstraints.weightx = 1.0;
         gridBagConstraints.weighty = 1.0;
         gridBagConstraints.insets = new java.awt.Insets(0, 2, 0, 2);
-        tablePanel.add(jScrollPane1, gridBagConstraints);
+        closureTablePanel.add(jScrollPane1, gridBagConstraints);
 
         searchComboBox.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
         searchComboBox.addActionListener(new java.awt.event.ActionListener() {
@@ -1467,7 +1590,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 2;
         gridBagConstraints.gridy = 2;
-        tablePanel.add(searchComboBox, gridBagConstraints);
+        closureTablePanel.add(searchComboBox, gridBagConstraints);
 
         jLabel7.setText("Columns ");
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -1475,7 +1598,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
         gridBagConstraints.gridy = 2;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
         gridBagConstraints.weightx = 1.0;
-        tablePanel.add(jLabel7, gridBagConstraints);
+        closureTablePanel.add(jLabel7, gridBagConstraints);
 
         columnsComboBox.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
         columnsComboBox.addItemListener(new java.awt.event.ItemListener() {
@@ -1485,7 +1608,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridy = 2;
-        tablePanel.add(columnsComboBox, gridBagConstraints);
+        closureTablePanel.add(columnsComboBox, gridBagConstraints);
 
         findButton.setText("Search");
         findButton.addActionListener(new java.awt.event.ActionListener() {
@@ -1498,7 +1621,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
         gridBagConstraints.gridy = 2;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         gridBagConstraints.insets = new java.awt.Insets(0, 4, 0, 0);
-        tablePanel.add(findButton, gridBagConstraints);
+        closureTablePanel.add(findButton, gridBagConstraints);
 
         findPathComboBox.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
         findPathComboBox.addActionListener(new java.awt.event.ActionListener() {
@@ -1509,7 +1632,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 4;
         gridBagConstraints.gridy = 2;
-        tablePanel.add(findPathComboBox, gridBagConstraints);
+        closureTablePanel.add(findPathComboBox, gridBagConstraints);
 
         findPathButton.setText("Search");
         findPathButton.addActionListener(new java.awt.event.ActionListener() {
@@ -1522,7 +1645,39 @@ public abstract class ClosureView extends javax.swing.JDialog {
         gridBagConstraints.gridy = 2;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
         gridBagConstraints.insets = new java.awt.Insets(0, 4, 0, 0);
-        tablePanel.add(findPathButton, gridBagConstraints);
+        closureTablePanel.add(findPathButton, gridBagConstraints);
+
+        jSplitPane1.setLeftComponent(closureTablePanel);
+
+        neighborTable.setModel(new javax.swing.table.DefaultTableModel(
+            new Object [][] {
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null}
+            },
+            new String [] {
+                "Title 1", "Title 2", "Title 3", "Title 4"
+            }
+        ));
+        jScrollPane3.setViewportView(neighborTable);
+
+        jSplitPane1.setRightComponent(jScrollPane3);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        jPanel1.add(jSplitPane1, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.gridwidth = 100;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weighty = 1.0;
+        tablePanel.add(jPanel1, gridBagConstraints);
 
         tablePane.add(tablePanel);
 
@@ -1693,7 +1848,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		Object currentSelection = rootTable.getSelectedItem();
 		if (currentSelection instanceof String) {
 			final Table source = getDataModel().getTableByDisplayName((String) currentSelection);
-			 if (source.closure(false).contains(table)) {
+			if (getBiDirClosure(source).contains(table)) {
 				findPath.addActionListener(new ActionListener() {
 					@Override
 					public void actionPerformed(ActionEvent arg0) {
@@ -1705,6 +1860,26 @@ public abstract class ClosureView extends javax.swing.JDialog {
 		}
 		findPath.setEnabled(false);
 		return findPath;
+	}
+
+	public static Set<Table> getBiDirClosure(final Table source) {
+		return getBiDirClosure(source, new HashSet<Table>(), new HashSet<Table>());
+	}
+
+	private static Set<Table> getBiDirClosure(Table table, Set<Table> tables, Set<Table> tablesToIgnore) {
+		Set<Table> closure = new HashSet<Table>();
+		if (!tables.contains(table) && !tablesToIgnore.contains(table)) {
+			closure.add(table);
+			tables.add(table);
+			for (Association association: table.associations) {
+				if (!tables.contains(association.destination)) {
+					if (association.getJoinCondition() != null || (association.reversalAssociation.getJoinCondition() != null)) {
+						closure.addAll(getBiDirClosure(association.destination, tables, tablesToIgnore));
+					}
+				}
+			}
+		}
+		return closure;
 	}
 
 	private void findPath(Table source, Table destination, boolean fromHistory) {
@@ -1735,7 +1910,7 @@ public abstract class ClosureView extends javax.swing.JDialog {
 			}
 		}
 	}
- 
+
 	private void initTabbedPane() {
 		if (tabbedPane.getSelectedIndex() == 2) {
 			tabAssTabPanel.removeAll();
@@ -1768,21 +1943,26 @@ public abstract class ClosureView extends javax.swing.JDialog {
     private javax.swing.JPanel associationPane;
     private javax.swing.JPanel associationPanel;
     private javax.swing.JTable closureTable;
-    private JComboBox columnsComboBox;
+    private javax.swing.JPanel closureTablePanel;
+    private JComboBox2 columnsComboBox;
     public javax.swing.JPanel contentPanel;
     private javax.swing.JButton findButton;
     private javax.swing.JButton findPathButton;
-    private JComboBox findPathComboBox;
+    private JComboBox2 findPathComboBox;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
     private javax.swing.JLabel jLabel5;
     private javax.swing.JLabel jLabel6;
     private javax.swing.JLabel jLabel7;
+    private javax.swing.JPanel jPanel1;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
+    private javax.swing.JScrollPane jScrollPane3;
     private javax.swing.JSeparator jSeparator1;
-    private JComboBox searchComboBox;
+    private javax.swing.JSplitPane jSplitPane1;
+    private javax.swing.JTable neighborTable;
+    private JComboBox2 searchComboBox;
     private javax.swing.JCheckBox showOnlyEnabledCheckBox;
     private javax.swing.JPanel tabAssAssPanel;
     private javax.swing.JPanel tabAssPanel;
@@ -1792,12 +1972,33 @@ public abstract class ClosureView extends javax.swing.JDialog {
     private javax.swing.JPanel tablePane;
     private javax.swing.JPanel tablePanel;
     // End of variables declaration//GEN-END:variables
-	
+
 	private static final long serialVersionUID = 5485949274233292142L;
 	private Font normalfont = new JLabel("normal").getFont();
 	private Font nonbold = new Font(normalfont.getName(), normalfont.getStyle() & ~Font.BOLD, normalfont.getSize());
 
-	public void addTabComponent(String titel, Container tab) {
+    public void adjustTableColumnsWidth(JTable table) {
+		DefaultTableModel dtm = (DefaultTableModel) table.getModel();
+		DefaultTableCellRenderer defaultTableCellRenderer = new DefaultTableCellRenderer();
+		for (int i = 0; i < table.getColumnCount(); i++) {
+			TableColumn column = table.getColumnModel().getColumn(i);
+			Component comp = defaultTableCellRenderer.getTableCellRendererComponent(table, column.getHeaderValue(), false, false, 0, i);
+			int width = 1;
+			width = Math.max(width, comp.getPreferredSize().width);
+
+			int line = 0;
+			for (; line < table.getRowCount(); ++line) {
+				comp = table.getCellRenderer(line, i).getTableCellRendererComponent(table, dtm.getValueAt(line, i), false, false, line, i);
+				width = Math.max(width, comp.getPreferredSize().width);
+			}
+			column.setPreferredWidth(Math.min(width, 400));
+			if (i == 0) {
+				column.setWidth(column.getPreferredWidth());
+			}
+		}
+	}
+
+    public void addTabComponent(String titel, Container tab) {
 		 tabbedPane.addTab(titel, tab);
 	}
 

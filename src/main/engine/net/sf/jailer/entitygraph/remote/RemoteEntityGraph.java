@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,15 @@
  */
 package net.sf.jailer.entitygraph.remote;
 
-import java.io.File;
 import java.io.OutputStreamWriter;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -31,6 +33,7 @@ import net.sf.jailer.configuration.LimitTransactionSizeInfo;
 import net.sf.jailer.database.SQLDialect;
 import net.sf.jailer.database.Session;
 import net.sf.jailer.database.Session.ResultSetReader;
+import net.sf.jailer.database.SqlException;
 import net.sf.jailer.database.UpdateTransformer;
 import net.sf.jailer.datamodel.Association;
 import net.sf.jailer.datamodel.Column;
@@ -39,14 +42,14 @@ import net.sf.jailer.datamodel.PrimaryKey;
 import net.sf.jailer.datamodel.RowIdSupport;
 import net.sf.jailer.datamodel.Table;
 import net.sf.jailer.entitygraph.EntityGraph;
+import net.sf.jailer.extractionmodel.SubjectLimitDefinition;
 import net.sf.jailer.util.CellContentConverter;
-import net.sf.jailer.util.CsvFile;
 import net.sf.jailer.util.Quoting;
 import net.sf.jailer.util.SqlUtil;
 
 /**
  * Persistent graph of entities in the remote database.
- * 
+ *
  * @author Ralf Wisser
  */
 public class RemoteEntityGraph extends EntityGraph {
@@ -60,25 +63,25 @@ public class RemoteEntityGraph extends EntityGraph {
 	 * The universal primary key.
 	 */
 	protected final PrimaryKey universalPrimaryKey;
-	
+
 	/**
 	 * Birthday of subject rows.
 	 */
 	protected int birthdayOfSubject = 0;
-	
+
 	/**
 	 * {@link RowIdSupport}.
 	 */
 	protected final RowIdSupport rowIdSupport;
-	
+
 	/**
 	 * Updates statistics (optional).
 	 */
 	private final Runnable updateStatistics;
-	
+
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * @param graphID the unique ID of the graph
 	 * @param session for executing SQL-Statements
 	 * @param universalPrimaryKey the universal primary key
@@ -86,39 +89,27 @@ public class RemoteEntityGraph extends EntityGraph {
 	protected RemoteEntityGraph(DataModel dataModel, int graphID, Session session, PrimaryKey universalPrimaryKey, Runnable updateStatistics, ExecutionContext executionContext) throws SQLException {
 		super(graphID, dataModel, executionContext);
 		this.session = session;
-		this.quoting = new Quoting(session);
+		this.quoting = Quoting.getQuoting(session);
 		this.universalPrimaryKey = universalPrimaryKey;
 		this.updateStatistics = updateStatistics;
 		this.rowIdSupport = new RowIdSupport(dataModel, session.dbms, executionContext);
-		
-		File fieldProcTablesFile = new File("field-proc-tables.csv");
-		if (fieldProcTablesFile.exists()) {
-			try {
-				for (CsvFile.Line line: new CsvFile(fieldProcTablesFile).getLines()) {
-					fieldProcTables.add(line.cells.get(0).toLowerCase());
-				}
-				Session._log.info("tables with field procedures: " + fieldProcTables);
-			} catch (Exception e) {
-				throw new RuntimeException(e.getMessage(), e);
-			}
-		}
 	}
-	
+
 	private final Quoting quoting;
 
 	/**
 	 * Sets birthday of subject rows.
-	 * 
+	 *
 	 * @param birthdayOfSubject birthday of subject rows
 	 */
 	@Override
 	public void setBirthdayOfSubject(int birthdayOfSubject) {
 		this.birthdayOfSubject = birthdayOfSubject;
 	}
-	
+
 	/**
 	 * Creates a new entity-graph.
-	 * 
+	 *
 	 * @param graphID the unique ID of the graph
 	 * @param session for executing SQL-Statements
 	 * @param universalPrimaryKey the universal primary key
@@ -132,7 +123,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Initializes a new entity-graph.
-	 * 
+	 *
 	 * @param graphID the unique ID of the graph
 	 * @param session for executing SQL-Statements
 	 */
@@ -148,7 +139,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Copies an entity-graph.
-	 * 
+	 *
 	 * @param newGraphID the unique ID of the new graph
 	 * @param session for executing SQL-Statements
 	 * @return the newly created entity-graph
@@ -160,12 +151,22 @@ public class RemoteEntityGraph extends EntityGraph {
 		session.executeUpdate(
 				"Insert into " + dmlTableReference(ENTITY, session) + "(r_entitygraph, " + universalPrimaryKey.columnList(null) + ", birthday, orig_birthday, type) " +
 					"Select " + newGraphID + ", " + universalPrimaryKey.columnList(null) + ", birthday, birthday, type From " + dmlTableReference(ENTITY, session) + " Where r_entitygraph=" + graphID + "");
+		entityGraph.setTransformerFactory(getTransformerFactory());
+		return entityGraph;
+	}
+
+	/**
+	 * Creates a new entity-graph of same type and session.
+	 */
+	public EntityGraph createNewGraph() throws SQLException {
+		RemoteEntityGraph entityGraph = create(dataModel, createUniqueGraphID(), session, universalPrimaryKey, null, executionContext);
+		entityGraph.setBirthdayOfSubject(birthdayOfSubject);
 		return entityGraph;
 	}
 
 	/**
 	 * Gets the age of the graph.
-	 * 
+	 *
 	 * @return the age of the graph
 	 */
 	@Override
@@ -186,17 +187,17 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Sets the age of the graph.
-	 * 
+	 *
 	 * @param age the age of the graph
 	 */
 	@Override
 	public void setAge(int age) throws SQLException {
 		session.executeUpdate("Update " + dmlTableReference(ENTITY_GRAPH, session) + " Set age=" + age + " Where id=" + graphID + "");
 	}
-	
+
 	/**
 	 * Gets the number of entities in the graph.
-	 * 
+	 *
 	 * @return the number of entities in the graph
 	 */
 	@Override
@@ -214,11 +215,11 @@ public class RemoteEntityGraph extends EntityGraph {
 		});
 		return size[0];
 	}
-	
+
 
 	/**
 	 * Gets the number of entities from given tables in the graph.
-	 * 
+	 *
 	 * @return the number of entities in the graph
 	 */
 	@Override
@@ -244,37 +245,222 @@ public class RemoteEntityGraph extends EntityGraph {
 	 * Deletes the graph.
 	 */
 	@Override
-	public void delete() throws SQLException {
+	public void delete(boolean force) {
 		if (!isTruncated) {
-			deleteRows(session, dmlTableReference(DEPENDENCY, session), "r_entitygraph=" + graphID + "");
-			deleteRows(session, dmlTableReference(ENTITY, session), "r_entitygraph=" + graphID + "");
-			deleteRows(session, dmlTableReference(ENTITY_GRAPH, session), "id=" + graphID + "");
+			try {
+				deleteRows(session, dmlTableReference(DEPENDENCY, session), "r_entitygraph=" + graphID + "");
+				deleteRows(session, dmlTableReference(ENTITY, session), "r_entitygraph=" + graphID + "");
+				deleteRows(session, dmlTableReference(ENTITY_GRAPH, session), "id=" + graphID + "");
+			} catch (SQLException e) {
+				// ignore
+			}
 		}
 	}
 
 	/**
 	 * Adds entities to the graph.
-	 * 
-	 * @param table the table 
+	 *
+	 * @param table the table
 	 * @param condition the condition in SQL that the entities must fulfill
 	 * @param today the birthday of the new entities
-	 * 
+	 *
 	 * @return row-count
 	 */
 	@Override
 	public long addEntities(Table table, String condition, int today) throws SQLException {
-		return addEntities(table, "T", condition, null, null, null, null, false, today, 0, true);
+		return addEntities(table, "T", condition, null, null, null, null, false, today, true);
 	}
-	
+
 	/**
-	 * Resolves an association. Retrieves and adds all entities 
-	 * associated with an entity born yesterday in the graph 
+	 * Adds limited number of entities to the graph.
+	 *
+	 * @param table the table
+	 * @param condition the condition in SQL that the entities must fulfill
+	 * @param today the birthday of the new entities
+	 * @param limitDefinition limit
+	 *
+	 * @return row-count
+	 */
+	@Override
+	public long addEntities(Table table, String condition, int today, SubjectLimitDefinition limitDefinition, boolean joinWithEntity) throws SQLException {
+		String select;
+		String alias = "T";
+
+		select =
+				"Select " + pkList(table, alias) +
+				" From " + quoting.requote(table.getName()) + " " + alias +
+				" Where (" + condition + ")";
+		if (limitDefinition.limit != null && limitDefinition.orderBy != null && limitDefinition.orderBy.length() > 0) {
+			select += " order by " + limitDefinition.orderBy;
+		}
+
+		final Map<Column, Column> match = universalPrimaryKey.match(rowIdSupport.getPrimaryKey(table));
+		final int MAX_BATCH_SIZE = 200;
+
+		String insSQL =
+				"Insert into " + dmlTableReference(ENTITY, session) + " (r_entitygraph, birthday, type, " + upkColumnList(table, null) + ") " +
+				"values (" + graphID + ", " + today + ", " + typeName(table);
+		for (Column column: universalPrimaryKey.getColumns()) {
+			Column tableColumn = match.get(column);
+			if (tableColumn != null) {
+				insSQL += " ,?";
+			}
+		}
+		insSQL += ")";
+
+		String delSQL = null;
+		if (joinWithEntity) {
+			StringBuffer sb = new StringBuffer();
+			for (Column column: universalPrimaryKey.getColumns()) {
+				if (sb.length() > 0) {
+					sb.append(" and ");
+				}
+				Column tableColumn = match.get(column);
+				if (tableColumn != null) {
+					if (tableColumn.isNullable) {
+						sb.append("(");
+					}
+					sb.append(column.name + " = ?");
+					if (tableColumn.isNullable) {
+						sb.append(" or (");
+						sb.append(column.name + " is null and ? is null)");
+					}
+					if (tableColumn.isNullable) {
+						sb.append(")");
+					}
+				} else {
+					sb.append(column.name);
+					sb.append(" is null");
+				}
+			}
+			delSQL =
+				"Delete from " + dmlTableReference(ENTITY, session) +
+				" Where r_entitygraph=" + graphID + " and type=" + typeName(table) +
+				" and (" + sb + ")";
+		}
+
+		final String insert = insSQL;
+		final String delete = delSQL;
+		final String finalSelect = select;
+
+		final PreparedStatement ins = session.getConnection().prepareStatement(insert);
+		final PreparedStatement del = delete != null? session.getConnection().prepareStatement(delete) : null;
+		final long[] rc = new long[] { 0 };
+		final boolean[] rcValid = new boolean[] { true };
+
+		session.executeQuery(select + " /*!*/", new Session.AbstractResultSetReader() {
+			int batchSize = 0;
+			Map<Integer, Integer> columnType = null;
+			@Override
+			public void readCurrentRow(ResultSet resultSet) throws SQLException {
+                try {
+                	if (columnType == null) {
+                		columnType = new HashMap<Integer, Integer>();
+                		ResultSetMetaData md = getMetaData(resultSet);
+                		int ci = 1;
+    					for (Column column: universalPrimaryKey.getColumns()) {
+    						Column tableColumn = match.get(column);
+    						if (tableColumn != null) {
+    							columnType.put(ci, md.getColumnType(ci));
+    							++ci;
+    						}
+    					}
+    					Session._log.info("batch insert: " + insert);
+    					if (delete != null) {
+        					Session._log.info("batch delete: " + delete);
+    					}
+                	}
+
+					int insI = 1;
+					int delI = 1;
+					int ci = 1;
+					for (Column column: universalPrimaryKey.getColumns()) {
+						Column tableColumn = match.get(column);
+						if (tableColumn != null) {
+							Object v = resultSet.getObject(ci++);
+
+							setObject(ins, insI++, v);
+							if (del != null) {
+								setObject(del, delI++, v);
+								if (tableColumn.isNullable) {
+									setObject(del, delI++, v);
+								}
+							}
+						}
+					}
+
+					ins.addBatch();
+					if (del != null) {
+						del.addBatch();
+					}
+	                ++batchSize;
+	                if (batchSize >= MAX_BATCH_SIZE) {
+                    	executeBatch();
+                        batchSize = 0;
+                        if (updateStatistics != null) {
+                			updateStatistics.run();
+                		}
+                    }
+                }
+                catch (SQLException e) {
+                	throw new SqlException("\"" + e.getMessage() + "\" (" + columnType + ") in statement \"" + insert + "\"", finalSelect, e);
+                }
+			}
+			private void setObject(final PreparedStatement statement, int i, Object value) throws SQLException {
+				if (value == null) {
+					statement.setNull(i, columnType.get(i));
+				} else {
+					statement.setObject(i, value);
+				}
+			}
+			private void executeBatch() throws SQLException {
+				if (del != null) {
+					int[] batchRc = del.executeBatch();
+					for (int brc: batchRc) {
+						if (brc < 0) {
+							rcValid[0] = false;
+						}
+		                rc[0] -= brc;
+		    			totalRowcount -= brc;
+					}
+				}
+				int brc = ins.executeBatch().length;
+				rc[0] += brc;
+				totalRowcount += brc;
+			}
+			@Override
+			public void close() {
+                try {
+                	if (batchSize > 0) {
+						executeBatch();
+					}
+                    batchSize = 0;
+                    ins.close();
+                    if (del != null) {
+                    	del.close();
+                    }
+				} catch (SQLException e) {
+					throw new RuntimeException(new SqlException("\"" + e.getMessage() + "\" in statement \"" + insert + "\"", finalSelect, e));
+	            }
+			}
+		}, null, null, limitDefinition.limit != null? limitDefinition.limit : 0, false);
+
+		if (updateStatistics != null) {
+			updateStatistics.run();
+		}
+
+		return rcValid[0]? rc[0] : -1;
+	}
+
+	/**
+	 * Resolves an association. Retrieves and adds all entities
+	 * associated with an entity born yesterday in the graph
 	 * and adds the dependencies.
-	 * 
-	 * @param table the table 
+	 *
+	 * @param table the table
 	 * @param association the association to resolve
 	 * @param today the birthday of the new entities
-	 * 
+	 *
 	 * @return row-count or -1, if association is ignored
 	 */
 	@Override
@@ -289,35 +475,87 @@ public class RemoteEntityGraph extends EntityGraph {
 				destAlias = "B";
 				sourceAlias = "A";
 			}
-			Integer associationExplanationID = 0;
-			if (explain) {
-				synchronized (explainIdOfAssociation) {
-					associationExplanationID = explainIdOfAssociation.get(association);
-					if (associationExplanationID == null) {
-						associationExplanationID = (nextExplainID++);
-						explainIdOfAssociation.put(association, associationExplanationID);
-					}
+			return addEntities(association.destination, destAlias, "E.r_entitygraph=" + graphID + " and E.birthday = " + (today - 1) + " and E.type=" + typeName(table) + " and " + pkEqualsEntityID(table, sourceAlias, "E"), table, sourceAlias, association.source, jc, true, today, association.reversed);
+		}
+		return -1;
+	}
+
+	/**
+	 * Resolves an association. Retrieves and adds all entities
+	 * associated with an entity into a given entity-graph.
+	 * Restrictions are ignored.
+	 *
+	 * @param table the table
+	 * @param association the association to resolve
+	 *
+	 * @return row-count
+	 */
+	@Override
+	public long resolveAssociation(final Table table, Association association, EntityGraph otherGraph, EntityGraph universum, boolean forDelete) throws SQLException {
+		String jc = association.getUnrestrictedJoinCondition();
+		if (jc != null) {
+			String destAlias, sourceAlias;
+			if (association.reversed) {
+				destAlias = "A";
+				sourceAlias = "B";
+			} else {
+				destAlias = "B";
+				sourceAlias = "A";
+			}
+			Table table1 = association.destination;
+			String condition = "E.r_entitygraph=" + graphID + " and E.birthday >= 0 and E.type=" + typeName(association.destination) + " and " + pkEqualsEntityID(association.destination, destAlias, "E");
+			Table source = association.source;
+			String select;
+			LimitTransactionSizeInfo limitTransactionSize = session.dbms.getLimitTransactionSize();
+			select =
+					"Select " + (table != null? "distinct " : "") + limitTransactionSize.afterSelectFragment(executionContext) + otherGraph.graphID + " as graph_id, " + pkList(source, sourceAlias) + ", " + 1 + " as birthday, " + typeName(source) + " as type" +
+							" From " + quoting.requote(table1.getName()) + " " + destAlias +
+							" left join " + dmlTableReference(ENTITY, session) + " Duplicate on Duplicate.r_entitygraph=" + otherGraph.graphID + " and Duplicate.type=" + typeName(table1) + " and " +
+							pkEqualsEntityID(table1, destAlias, "Duplicate") +
+							(table != null? ", " + quoting.requote(table.getName()) + " " + sourceAlias + " ": "") +
+							" left join " + dmlTableReference(ENTITY, session) + " DUnivers on DUnivers.r_entitygraph=" + universum.graphID + " and DUnivers.type=" + typeName(source) + " and " +
+							pkEqualsEntityID(source, sourceAlias, "DUnivers") +
+							", " + dmlTableReference(ENTITY, session) + " E" +
+							" Where (" + condition + ") and Duplicate.type is null and DUnivers.type " +
+							(forDelete? "is null" : "is not null") +
+							(table != null? " and (" + jc + ") " : " ") + limitTransactionSize.additionalWhereConditionFragment(executionContext) +
+							limitTransactionSize.statementSuffixFragment(executionContext);
+
+			long incrementSize = limitTransactionSize.getSize(executionContext);
+			String insert = "Insert into " + dmlTableReference(ENTITY, session) + " (r_entitygraph, " + upkColumnList(source, null) + ", birthday, type) " + select;
+			if (DBMS.SYBASE.equals(session.dbms)) session.execute("set forceplan on ");
+			long rc = 0;
+			for (;;) {
+				long incRc = session.executeUpdate(insert);
+				rc += incRc;
+				totalRowcount += incRc;
+				if (updateStatistics != null) {
+					updateStatistics.run();
+				}
+				if (incRc != incrementSize || incrementSize == 0) {
+					break;
 				}
 			}
-			return addEntities(association.destination, destAlias, "E.r_entitygraph=" + graphID + " and E.birthday = " + (today - 1) + " and E.type=" + typeName(table) + " and " + pkEqualsEntityID(table, sourceAlias, "E"), table, sourceAlias, association.source, jc, true, today, associationExplanationID, association.reversed);
+			if (DBMS.SYBASE.equals(session.dbms)) session.execute("set forceplan off ");
+			return rc;
 		}
 		return -1;
 	}
 
 	/**
 	 * Adds entities to the graph.
-	 * 
-	 * @param table the table 
+	 *
+	 * @param table the table
 	 * @param condition the condition in SQL that the entities must fulfill with 'E' as alias for the entity-table
 	 * @param joinedTable optional table to join with
 	 * @param source optional, the source-table
 	 * @param joinCondition optional condition to join with <code>joinedTable</code>
 	 * @param joinWithEntity whether to join with entity-table too
 	 * @param today the birthday of the new entities
-	 * 
+	 *
 	 * @return row-count
 	 */
-	private long addEntities(Table table, String alias, String condition, Table joinedTable, String joinedTableAlias, Table source, String joinCondition, boolean joinWithEntity, int today, int associationExplanationID, boolean isInverseAssociation) throws SQLException {
+	private long addEntities(Table table, String alias, String condition, Table joinedTable, String joinedTableAlias, Table source, String joinCondition, boolean joinWithEntity, int today, boolean isInverseAssociation) throws SQLException {
 		if (joinCondition != null) {
 			joinCondition = SqlUtil.resolvePseudoColumns(joinCondition, isInverseAssociation? null : "E", isInverseAssociation? "E" : null, today, birthdayOfSubject, inDeleteMode);
 		}
@@ -325,8 +563,7 @@ public class RemoteEntityGraph extends EntityGraph {
 		LimitTransactionSizeInfo limitTransactionSize = session.dbms.getLimitTransactionSize();
 		if (joinedTable == null && !joinWithEntity && !limitTransactionSize.isApplicable(executionContext)) {
 			select =
-					"Select " + graphID + " " + limitTransactionSize.afterSelectFragment(executionContext) + "as GRAPH_ID, " + pkList(table, alias) + ", " + today + " AS BIRTHDAY, " + typeName(table) + " AS TYPE" +
-					(source == null || !explain? "" : ", " + associationExplanationID + " AS ASSOCIATION, " + typeName(source) + " AS SOURCE_TYPE, " + pkList(source, joinedTableAlias, "PRE_")) +
+					"Select " + graphID + " " + limitTransactionSize.afterSelectFragment(executionContext) + "as graph_id, " + pkList(table, alias) + ", " + today + " as birthday, " + typeName(table) + " as type" +
 					" From " + quoting.requote(table.getName()) + " " + alias +
 					" Where (" + condition + ") " + limitTransactionSize.additionalWhereConditionFragment(executionContext) +
 					limitTransactionSize.statementSuffixFragment(executionContext);
@@ -334,11 +571,10 @@ public class RemoteEntityGraph extends EntityGraph {
 			if (session.dbms.isAvoidLeftJoin()) {
 				// bug fix for [https://sourceforge.net/p/jailer/bugs/12/ ] "Outer Join for selecting dependant entries and Oracle 10"
 				// mixing left joins and theta-style joins causes problems on oracle DBMS
-				
+
 				// TODO is this still necessary?
 				select =
-					"Select " + (joinedTable != null? "distinct " : "") + limitTransactionSize.afterSelectFragment(executionContext) + graphID + " as GRAPH_ID, " + pkList(table, alias) + ", " + today + " AS BIRTHDAY, " + typeName(table) + " AS TYPE" +
-					(source == null || !explain? "" : ", " + associationExplanationID + " AS ASSOCIATION, " + typeName(source) + " AS SOURCE_TYPE, " + pkList(source, joinedTableAlias, "PRE_")) +
+					"Select " + (joinedTable != null? "distinct " : "") + limitTransactionSize.afterSelectFragment(executionContext) + graphID + " as graph_id, " + pkList(table, alias) + ", " + today + " as birthday, " + typeName(table) + " as type" +
 					" From " + quoting.requote(table.getName()) + " " + alias
 						+
 					(joinedTable != null? ", " + quoting.requote(joinedTable.getName()) + " " + joinedTableAlias + " ": "") +
@@ -346,20 +582,19 @@ public class RemoteEntityGraph extends EntityGraph {
 					" Where (" + condition + ") " +
 						// CW	"and Duplicate.type is null" +
 					(joinedTable != null? " and (" + joinCondition + ")" : "") +
-	
+
 						" AND NOT EXISTS (select * from " + dmlTableReference(ENTITY, session)
 						+ " DuplicateExists where r_entitygraph=" + graphID + " " + "AND DuplicateExists.type="
 						+ typeName(table)
 						+ " and " + pkEqualsEntityID(table, alias, "DuplicateExists") + ") " + limitTransactionSize.additionalWhereConditionFragment(executionContext) +
 						limitTransactionSize.statementSuffixFragment(executionContext);
-	
+
 			} else {
 				select =
-					"Select " + (joinedTable != null? "distinct " : "") + limitTransactionSize.afterSelectFragment(executionContext) + graphID + " as GRAPH_ID, " + pkList(table, alias) + ", " + today + " AS BIRTHDAY, " + typeName(table) + " AS TYPE" +
-					(source == null || !explain? "" : ", " + associationExplanationID + " AS ASSOCIATION, " + typeName(source) + " AS SOURCE_TYPE, " + pkList(source, joinedTableAlias, "PRE_")) +
+					"Select " + (joinedTable != null? "distinct " : "") + limitTransactionSize.afterSelectFragment(executionContext) + graphID + " as graph_id, " + pkList(table, alias) + ", " + today + " as birthday, " + typeName(table) + " as type" +
 					" From " + quoting.requote(table.getName()) + " " + alias +
 					" left join " + dmlTableReference(ENTITY, session) + " Duplicate on Duplicate.r_entitygraph=" + graphID + " and Duplicate.type=" + typeName(table) + " and " +
-					pkEqualsEntityID(table, alias, "Duplicate") + 
+					pkEqualsEntityID(table, alias, "Duplicate") +
 					(joinedTable != null? ", " + quoting.requote(joinedTable.getName()) + " " + joinedTableAlias + " ": "") +
 					(joinWithEntity? ", " + dmlTableReference(ENTITY, session) + " E" : "") +
 					" Where (" + condition + ") and Duplicate.type is null" +
@@ -368,23 +603,8 @@ public class RemoteEntityGraph extends EntityGraph {
 			}
 		}
 
-		if (source != null && explain) {
-			String max = "";
-			Map<Column, Column> match = universalPrimaryKey.match(rowIdSupport.getPrimaryKey(source));
-			for (Column column: universalPrimaryKey.getColumns()) {
-				if (match.get(column) != null) {
-					if (max.length() > 0) {
-						max += ", ";
-					}
-					max += "max(PRE_" + column.name + ")";
-				}
-			}
-			select = "Select GRAPH_ID, " + upkColumnList(table, null) + ", BIRTHDAY, TYPE, ASSOCIATION, max(SOURCE_TYPE), " + max + " From (" + select + ") Q " +
-					 "Group by GRAPH_ID, " + upkColumnList(table, null) + ", BIRTHDAY, TYPE, ASSOCIATION";
-		}
-
 		long incrementSize = limitTransactionSize.getSize(executionContext);
-		String insert = "Insert into " + dmlTableReference(ENTITY, session) + " (r_entitygraph, " + upkColumnList(table, null) + ", birthday, type" + (source == null || !explain? "" : ", association, PRE_TYPE, " + upkColumnList(source, "PRE_"))  + ") " + select;
+		String insert = "Insert into " + dmlTableReference(ENTITY, session) + " (r_entitygraph, " + upkColumnList(table, null) + ", birthday, type) " + select;
 		if (DBMS.SYBASE.equals(session.dbms)) session.execute("set forceplan on ");
 		long rc = 0;
 		for (;;) {
@@ -404,7 +624,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Adds dependencies.
-	 * 
+	 *
 	 * @param from source of dependency
 	 * @param fromAlias alias for from-table
 	 * @param to destination of dependency
@@ -426,7 +646,7 @@ public class RemoteEntityGraph extends EntityGraph {
 			" and " + pkEqualsEntityID(to, toAlias, "E2");
 		totalRowcount += session.executeUpdate(insert);
 	}
-	
+
 	/**
 	 * Gets distinct association-ids of all edged.
 	 */
@@ -459,7 +679,12 @@ public class RemoteEntityGraph extends EntityGraph {
 				fromEqualsPK.append(" and ");
 			}
 			if (match.get(column) != null) {
-				fromEqualsPK.append("D.FROM_" + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name);
+				if (match.get(column).isNullable) {
+					fromEqualsPK.append("(D.FROM_" + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name + " or (");
+					fromEqualsPK.append("D.FROM_" + column.name + " is null and " + dmlTableReference(ENTITY, session) + "." + column.name + " is null))");
+				} else {
+					fromEqualsPK.append("D.FROM_" + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name);
+				}
 			} else {
 				fromEqualsPK.append("D.FROM_" + column.name + " is null and " + dmlTableReference(ENTITY, session) + "." + column.name + " is null");
 			}
@@ -467,7 +692,7 @@ public class RemoteEntityGraph extends EntityGraph {
 		session.executeUpdate(
 				"Update " + dmlTableReference(ENTITY, session) + " set birthday=0 " +
 				"Where r_entitygraph=" + graphID + " and birthday>0 and " +
-					   (table != null? "type=" + typeName(table) + " and " : "") +
+					   "type=" + typeName(table) + " and " +
 					   "not exists (Select * from " + dmlTableReference(DEPENDENCY, session) + " D " +
 						   "Where D.r_entitygraph=" + graphID + " and D.assoc=0 and D.from_type=" + dmlTableReference(ENTITY, session) + ".type and " +
 								 fromEqualsPK + ")");
@@ -484,8 +709,13 @@ public class RemoteEntityGraph extends EntityGraph {
 			if (toEqualsPK.length() > 0) {
 				toEqualsPK.append(" and ");
 			}
-			if (match.containsKey(column)) {
-				toEqualsPK.append("D.TO_" + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name);
+			if (match.get(column) != null) {
+				if (match.get(column).isNullable) {
+					toEqualsPK.append("(D.TO_" + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name + " or (");
+					toEqualsPK.append("D.TO_" + column.name + " is null and " + dmlTableReference(ENTITY, session) + "." + column.name + " is null))");
+				} else {
+					toEqualsPK.append("D.TO_" + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name);
+				}
 			} else {
 				toEqualsPK.append("D.TO_" + column.name + " is null and " + dmlTableReference(ENTITY, session) + "." + column.name + " is null");
 			}
@@ -500,7 +730,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Reads all entities of a given table which are marked as independent or as roots.
-	 * 
+	 *
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
 	 */
@@ -509,10 +739,10 @@ public class RemoteEntityGraph extends EntityGraph {
 		Session.ResultSetReader reader = getTransformerFactory().create(table);
 		readMarkedEntities(table, reader, filteredSelectionClause(table, false), orderByPK);
 	}
-	
+
 	/**
 	 * Reads all entities of a given table which are marked as independent or as roots.
-	 * 
+	 *
 	 * @param reader for reading the result-set
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
@@ -531,10 +761,10 @@ public class RemoteEntityGraph extends EntityGraph {
 		executionContext.getProgressListenerRegistry().fireExported(table, rc);
 		addExportedCount(rc);
 	}
-	
+
 	/**
 	 * Reads all entities of a given table which are marked as independent or as roots.
-	 * 
+	 *
 	 * @param reader for reading the result-set
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
@@ -555,7 +785,7 @@ public class RemoteEntityGraph extends EntityGraph {
 				selectOPK.append(", ");
 			}
 			sb.append(originalPKAliasPrefix + i);
-			selectOPK.append("T." + quoting.requote(pkColumns.get(i).name) + " AS " + originalPKAliasPrefix + i);
+			selectOPK.append("T." + quoting.requote(pkColumns.get(i).name) + " as " + originalPKAliasPrefix + i);
 		}
 		orderBy = "order by " + sb;
 		String sqlQuery = "Select " + selectionSchema + " From (" +
@@ -570,34 +800,10 @@ public class RemoteEntityGraph extends EntityGraph {
 		executionContext.getProgressListenerRegistry().fireExported(table, rc);
 		addExportedCount(rc);
 	}
-	
-	/**
-	 * Unites the graph with another one and deletes the other graph.
-	 * 
-	 * @param graph the graph to be united with this graph
-	 */
-	@Override
-	public void uniteWith(EntityGraph graph) throws SQLException {
-		StringBuffer e1EqualsE2 = new StringBuffer();
-		for (Column column: universalPrimaryKey.getColumns()) {
-			if (e1EqualsE2.length() > 0) {
-				e1EqualsE2.append(" and ");
-			}
-			e1EqualsE2.append("E1." + column.name + "=E2." + column.name);
-		}
-		session.executeUpdate("Update " + dmlTableReference(ENTITY, session) + " E1 " +
-				"set E1.r_entitygraph=" + graphID + " " +
-				"Where E1.r_entitygraph=" + graph.graphID + " " +
-				"and not exists(Select * from " + dmlTableReference(ENTITY, session) + " E2 Where " +
-				"E2.r_entitygraph=" + graphID + " and " +
-				e1EqualsE2 +
-				")");
-		graph.delete();
-	}
-	
+
 	/**
 	 * Reads all entities of a given table.
-	 * 
+	 *
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
 	 */
@@ -611,7 +817,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Reads some columns of all entities of a given table without using filters.
-	 * 
+	 *
 	 * @param table the table
 	 * @param columns the columns
 	 * @param reader to read
@@ -620,7 +826,7 @@ public class RemoteEntityGraph extends EntityGraph {
 	public long readUnfilteredEntityColumns(final Table table, final List<Column> columns, final Session.ResultSetReader reader) throws SQLException {
 		StringBuilder sb = new StringBuilder();
 		boolean first = true;
-		
+
 		for (Column c: columns) {
 			if (!first) {
 				sb.append(", ");
@@ -630,7 +836,7 @@ public class RemoteEntityGraph extends EntityGraph {
 			first = false;
 		}
 		final String columnList = sb.toString();
-		
+
 		String sqlQuery = "Select " + columnList + " From " + dmlTableReference(ENTITY, session) + " E join " + quoting.requote(table.getName()) + " T on " +
 				pkEqualsEntityID(table, "T", "E") +
 				" Where E.birthday>=0 and E.r_entitygraph=" + graphID + " and E.type=" + typeName(table) + "";
@@ -639,7 +845,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Reads all entities of a given table.
-	 * 
+	 *
 	 * @param table the table
 	 * @param orderByPK if <code>true</code>, result will be ordered by primary keys
 	 */
@@ -650,7 +856,7 @@ public class RemoteEntityGraph extends EntityGraph {
 		long rc;
 		if (orderByPK) {
 			String sqlQueryWithOrderBy = sqlQuery +
-				(orderByPK? " order by " + rowIdSupport.getPrimaryKey(table).columnList("T.", quoting) : "");
+				" order by " + rowIdSupport.getPrimaryKey(table).columnList("T.", quoting);
 			rc = session.executeQuery(sqlQueryWithOrderBy, reader, sqlQuery, null, 0, withExplicitCommit());
 		} else {
 			rc = session.executeQuery(sqlQuery, reader, withExplicitCommit());
@@ -664,32 +870,33 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Updates columns of a table.
-	 * 
+	 *
 	 * @param table the table
 	 * @param columns the columns;
+	 * @param inSourceSchema if <code>true</code>, use source-schema-mapping, else use schema-mapping
 	 * @param reason to be written as comment
 	 */
 	@Override
-	public void updateEntities(Table table, Set<Column> columns, OutputStreamWriter scriptFileWriter, DBMS targetConfiguration, String reason) throws SQLException {
-		Session.ResultSetReader reader = new UpdateTransformer(table, columns, scriptFileWriter, executionContext.getNumberOfEntities(), getTargetSession(), targetConfiguration, importFilterManager, reason, executionContext);
+	public void updateEntities(Table table, Set<Column> columns, OutputStreamWriter scriptFileWriter, DBMS targetConfiguration, boolean inSourceSchema, String reason) throws SQLException {
+		Session.ResultSetReader reader = new UpdateTransformer(table, columns, scriptFileWriter, executionContext.getNumberOfEntities(), getTargetSession(), targetConfiguration, importFilterManager, inSourceSchema, reason, executionContext);
 		readEntities(table, false, reader);
 	}
 
 	/**
 	 * Gets select clause for reading rows of given type
 	 * with respect of the column filters.
-	 * 
+	 *
 	 * @param table the table to read rows from
 	 * @return select clause
 	 */
 	protected String filteredSelectionClause(Table table, boolean appylImportFilter) {
 		return filteredSelectionClause(table, null, quoting, appylImportFilter);
 	}
-	
+
 	/**
 	 * Gets select clause for reading rows of given type
 	 * with respect of the column filters.
-	 * 
+	 *
 	 * @param table the table to read rows from
 	 * @param columnPrefix optional prefix for aliases
 	 * @param quoting for unquoting of column names if columnPrefix is given
@@ -698,7 +905,7 @@ public class RemoteEntityGraph extends EntityGraph {
 	protected String filteredSelectionClause(Table table, String columnPrefix, Quoting quoting, boolean appylImportFilter) {
 		StringBuilder sb = new StringBuilder();
 		boolean first = true;
-		
+
 		for (Column c: table.getSelectionClause()) {
 			if (!first) {
 				sb.append(", ");
@@ -712,7 +919,7 @@ public class RemoteEntityGraph extends EntityGraph {
 				}
 			}
 			if (filterExpression != null) {
-				if (filterExpression.trim().toLowerCase().startsWith("select")) {
+				if (filterExpression.trim().toLowerCase(Locale.ENGLISH).startsWith("select")) {
 					sb.append("(" + filterExpression + ")");
 				} else {
 					sb.append(filterExpression);
@@ -723,7 +930,7 @@ public class RemoteEntityGraph extends EntityGraph {
 			sb.append(" as " + prefixColumnName(columnPrefix, quoting, c));
 			first = false;
 		}
-		
+
 		return sb.toString();
 	}
 
@@ -748,31 +955,41 @@ public class RemoteEntityGraph extends EntityGraph {
 			if (fromEqualsPK.length() > 0) {
 				fromEqualsPK.append(" and ");
 			}
-			if (match.containsKey(column)) {
-				fromEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".FROM_" + column.name + "=" + column.name);
+			if (match.get(column) != null) {
+				if (match.get(column).isNullable) {
+					fromEqualsPK.append("(" + dmlTableReference(DEPENDENCY, session) + ".FROM_" + column.name + "=" + column.name + " or (");
+					fromEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".FROM_" + column.name + " is null and " + column.name + " is null))");
+				} else {
+					fromEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".FROM_" + column.name + "=" + column.name);
+				}
 			} else {
 				fromEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".FROM_" + column.name + " is null and " + column.name + " is null");
 			}
 			if (toEqualsPK.length() > 0) {
 				toEqualsPK.append(" and ");
 			}
-			if (match.containsKey(column)) {
-				toEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".TO_" + column.name + "=" + column.name);
+			if (match.get(column) != null) {
+				if (match.get(column).isNullable) {
+					toEqualsPK.append("(" + dmlTableReference(DEPENDENCY, session) + ".TO_" + column.name + "=" + column.name + " or (");
+					toEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".TO_" + column.name + " is null and " + column.name + " is null))");
+				} else {
+					toEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".TO_" + column.name + "=" + column.name);
+				}
 			} else {
 				toEqualsPK.append(dmlTableReference(DEPENDENCY, session) + ".TO_" + column.name + " is null and " + column.name + " is null");
 			}
 		}
 		deleteRows(session,
 				dmlTableReference(DEPENDENCY, session),
-				dmlTableReference(DEPENDENCY, session) + ".r_entitygraph=" + graphID + " and assoc=0 and from_type=" + typeName(table) + " and " + 
-					  "exists (Select * from " + dmlTableReference(ENTITY, session) + " E Where " + 
+				dmlTableReference(DEPENDENCY, session) + ".r_entitygraph=" + graphID + " and assoc=0 and from_type=" + typeName(table) + " and " +
+					  "exists (Select * from " + dmlTableReference(ENTITY, session) + " E Where " +
 						  "E.r_entitygraph=" + graphID + " and " +
 						  fromEqualsPK + " and " + dmlTableReference(DEPENDENCY, session) + ".from_type=E.type and " +
 						  "E.birthday=0)");
 		deleteRows(session,
 				dmlTableReference(DEPENDENCY, session),
 				dmlTableReference(DEPENDENCY, session) + ".r_entitygraph=" + graphID + " and assoc=0 and to_type=" + typeName(table) + " and " +
-					  "exists (Select * from " + dmlTableReference(ENTITY, session) + " E Where " + 
+					  "exists (Select * from " + dmlTableReference(ENTITY, session) + " E Where " +
 						  "E.r_entitygraph=" + graphID + " and " +
 						  toEqualsPK + " and " + dmlTableReference(DEPENDENCY, session) + ".to_type=E.type and " +
 						  "E.birthday=0)");
@@ -795,7 +1012,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Counts the entities of a given table in this graph.
-	 * 
+	 *
 	 * @param table the table
 	 * @return the number of entities from table in this graph
 	 */
@@ -817,13 +1034,14 @@ public class RemoteEntityGraph extends EntityGraph {
 	/**
 	 * Removes all entities from this graph which are associated with an entity
 	 * outside the graph.
-	 * 
+	 *
 	 * @param deletedEntitiesAreMarked if true, consider entity as deleted if its birthday is negative
+	 * @param allTables set of tables from which there are entities in E
 	 * @param association the association
 	 * @return number of removed entities
 	 */
 	@Override
-	public long removeAssociatedDestinations(Association association, boolean deletedEntitiesAreMarked) throws SQLException {
+	public long removeAssociatedDestinations(Association association, boolean deletedEntitiesAreMarked, Set<Table> allTables) throws SQLException {
 		String jc = association.getJoinCondition();
 		if (jc != null) {
 			String destAlias, sourceAlias;
@@ -836,14 +1054,24 @@ public class RemoteEntityGraph extends EntityGraph {
 			}
 			int setId = getNextSetId();
 			jc = SqlUtil.resolvePseudoColumns(jc, association.reversed? "EB" : "EA", association.reversed? "EA" : "EB", 0, birthdayOfSubject, "orig_birthday", inDeleteMode);
+			boolean checkDest = allTables.contains(association.source);
+			if (!checkDest) {
+				jc = jc.replace("EA.orig_birthday", "(null)");
+			}
+
 			String remove = "Insert into " + dmlTableReference(ENTITY_SET_ELEMENT, session) + "(set_id, type, " + universalPrimaryKey.columnList(null) + ") " +
 				"Select distinct " + setId + ", EB.type, " + universalPrimaryKey.columnList("EB.") + " from " + dmlTableReference(ENTITY, session) + " EB " +
 				"join " + quoting.requote(association.destination.getName()) + " " + destAlias + " on "+ pkEqualsEntityID(association.destination, destAlias, "EB") + " " +
 				"join " + quoting.requote(association.source.getName()) + " " + sourceAlias + " " +
 				"on (" + jc + ") " +
-				(deletedEntitiesAreMarked? "join " : "left join ") + dmlTableReference(ENTITY, session) + " EA on EA.r_entitygraph=" + graphID + " and EA.type=" + typeName(association.source) + " and " + pkEqualsEntityID(association.source, sourceAlias, "EA") + " " +
-				"Where EB.r_entitygraph=" + graphID + " and EB.type=" + typeName(association.destination) + " " +
-				"and " + (deletedEntitiesAreMarked? "EA.birthday=-1 and EB.birthday>=0" : "EA.type is null");
+				(checkDest?
+						(deletedEntitiesAreMarked? "join " : "left join ") + dmlTableReference(ENTITY, session) + " EA on EA.r_entitygraph=" + graphID + " and EA.type=" + typeName(association.source) + " and " + pkEqualsEntityID(association.source, sourceAlias, "EA") + " "
+						:
+						"") +
+				"Where EB.r_entitygraph=" + graphID + " and EB.type=" + typeName(association.destination);
+				if (checkDest) {
+					remove += " and " + (deletedEntitiesAreMarked? "EA.birthday=-1 and EB.birthday>=0" : "EA.type is null");
+				}
 			long rc = session.executeUpdate(remove);
 			if (rc > 0) {
 				Map<Column, Column> match = universalPrimaryKey.match(rowIdSupport.getPrimaryKey(association.destination));
@@ -856,9 +1084,17 @@ public class RemoteEntityGraph extends EntityGraph {
 					if (sEqualsEWoAlias.length() > 0) {
 						sEqualsEWoAlias.append(" and ");
 					}
-					if (match.containsKey(column)) {
-						sEqualsE.append("S." + column.name + "=E." + column.name);
-						sEqualsEWoAlias.append("S." + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name);
+					if (match.get(column) != null) {
+						if (match.get(column).isNullable) {
+							sEqualsE.append("(S." + column.name + "=E." + column.name + " or (");
+							sEqualsE.append("S." + column.name + " is null and E." + column.name + " is null))");
+
+							sEqualsEWoAlias.append("(S." + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name + " or (");
+							sEqualsEWoAlias.append("S." + column.name + " is null and " + dmlTableReference(ENTITY, session) + "." + column.name + " is null))");
+						} else {
+							sEqualsE.append("S." + column.name + "=E." + column.name);
+							sEqualsEWoAlias.append("S." + column.name + "=" + dmlTableReference(ENTITY, session) + "." + column.name);
+						}
 					} else {
 						sEqualsE.append("S." + column.name + " is null and E." + column.name + " is null");
 						sEqualsEWoAlias.append("S." + column.name + " is null and " + dmlTableReference(ENTITY, session) + "." + column.name + " is null");
@@ -867,18 +1103,18 @@ public class RemoteEntityGraph extends EntityGraph {
 				remove = "Update " + dmlTableReference(ENTITY, session) + " E set E.birthday=-1 Where E.r_entitygraph=" + graphID + " and E.type=" + typeName(association.destination) + " " +
 						  "and exists (Select * from " + dmlTableReference(ENTITY_SET_ELEMENT, session) + " S where S.set_id=" + setId + " and E.type=S.type and " + sEqualsE + ") " +
 						  "and E.birthday<>-1";
+				String removeWOAlias = "Update " + dmlTableReference(ENTITY, session) + " set birthday=-1 Where " + dmlTableReference(ENTITY, session) + ".r_entitygraph=" + graphID + " and " + dmlTableReference(ENTITY, session) + ".type=" + typeName(association.destination) + " " +
+						"and exists (Select * from " + dmlTableReference(ENTITY_SET_ELEMENT, session) + " S where S.set_id=" + setId + " and " + dmlTableReference(ENTITY, session) + ".type=S.type and " + sEqualsEWoAlias + ") " +
+						"and " + dmlTableReference(ENTITY, session) + ".birthday<>-1";
+				boolean tryWithAliasFirst = !DBMS.POSTGRESQL.equals(session.dbms);
 				boolean silent = session.getSilent();
 				try {
 					session.setSilent(true);
-					rc = session.executeUpdate(remove);
+					rc = session.executeUpdate(tryWithAliasFirst? remove : removeWOAlias);
 					totalRowcount += rc;
 				} catch (SQLException e) {
-					// postgreSQL
-					Session._log.debug("failed, retry without alias (" + e.getMessage() + ")");
-					remove = "Update " + dmlTableReference(ENTITY, session) + " set birthday=-1 Where " + dmlTableReference(ENTITY, session) + ".r_entitygraph=" + graphID + " and " + dmlTableReference(ENTITY, session) + ".type=" + typeName(association.destination) + " " +
-					"and exists (Select * from " + dmlTableReference(ENTITY_SET_ELEMENT, session) + " S where S.set_id=" + setId + " and " + dmlTableReference(ENTITY, session) + ".type=S.type and " + sEqualsEWoAlias + ") " +
-					"and " + dmlTableReference(ENTITY, session) + ".birthday<>-1";
-					rc = session.executeUpdate(remove);
+					Session._log.debug("failed, retry with/without alias (" + e.getMessage() + ")");
+					rc = session.executeUpdate(tryWithAliasFirst? removeWOAlias : remove);
 					totalRowcount += rc;
 				} finally {
 					session.setSilent(silent);
@@ -891,8 +1127,8 @@ public class RemoteEntityGraph extends EntityGraph {
 	}
 
 	/**
-	 * Reads all entities which depends on given entity. 
-	 * 
+	 * Reads all entities which depends on given entity.
+	 *
 	 * @param table the table from which to read entities
 	 * @param association the dependency
 	 * @param resultSet current row is given entity
@@ -910,10 +1146,10 @@ public class RemoteEntityGraph extends EntityGraph {
 				if (i > 0) {
 					selectOPK.append(", ");
 				}
-				selectOPK.append("T." + quoting.requote(pkColumns.get(i).name) + " AS " + originalPKAliasPrefix + i);
+				selectOPK.append("T." + quoting.requote(pkColumns.get(i).name) + " as " + originalPKAliasPrefix + i);
 			}
-			select = 
-				"Select " + selectionSchema + " from (" +  
+			select =
+				"Select " + selectionSchema + " from (" +
 				"Select " + selectOPK + ", " + filteredSelectionClause(table, false) + " from " + quoting.requote(table.getName()) + " T join " + dmlTableReference(DEPENDENCY, session) + " D on " +
 				 pkEqualsEntityID(table, "T", "D", "TO_") + " and D.to_type=" + typeName(table) + "" +
 				 " Where " + pkEqualsEntityID(association.source, resultSet, "D", "FROM_", cellContentConverter) +
@@ -930,10 +1166,10 @@ public class RemoteEntityGraph extends EntityGraph {
 		executionContext.getProgressListenerRegistry().fireExported(table, rc);
 		addExportedCount(rc);
 	}
-	
+
 	/**
-	 * Marks all entities which depends on given entity as traversed. 
-	 * 
+	 * Marks all entities which depends on given entity as traversed.
+	 *
 	 * @param table the table from which to read entities
 	 * @param association the dependency
 	 * @param resultSet current row is given entity
@@ -955,10 +1191,10 @@ public class RemoteEntityGraph extends EntityGraph {
 		}
 		session.executeUpdate(update);
 	}
-	
+
 	/**
-	 * Reads all non-traversed dependencies. 
-	 * 
+	 * Reads all non-traversed dependencies.
+	 *
 	 * @param table the source of dependencies to look for
 	 * @param reader reads the entities
 	 */
@@ -970,10 +1206,10 @@ public class RemoteEntityGraph extends EntityGraph {
 			 " and D.r_entitygraph=" + graphID;
 		session.executeQuery(select, reader, withExplicitCommit());
 	}
-	
+
 	/**
 	 * Removes all reflexive dependencies of given table.
-	 * 
+	 *
 	 * @param table the table
 	 */
 	@Override
@@ -986,7 +1222,12 @@ public class RemoteEntityGraph extends EntityGraph {
 				if (sb.length() > 0) {
 					sb.append(" and ");
 				}
-				sb.append("FROM_" + column.name + " = TO_" + column.name);
+				if (tableColumn.isNullable) {
+					sb.append("(FROM_" + column.name + " = TO_" + column.name);
+					sb.append(" or (FROM_" + column.name + " is null and TO_" + column.name + " is null))");
+				} else {
+					sb.append("FROM_" + column.name + " = TO_" + column.name);
+				}
 			}
 		}
 		deleteRows(session, dmlTableReference(DEPENDENCY, session), sb +
@@ -997,7 +1238,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Gets a SQL comparison expression for comparing rows with given entity.
-	 * 
+	 *
 	 * @param table the table
 	 * @param resultSet
 	 * @return a SQL comparison expression for comparing rows of <code>table</code> with current row of resultSet
@@ -1019,7 +1260,12 @@ public class RemoteEntityGraph extends EntityGraph {
 					}
 					++i;
 				}
-				sb.append("=" + cellContentConverter.toSql(cellContentConverter.getObject(resultSet, "PK" + i)));
+				Object object = cellContentConverter.getObject(resultSet, "PK" + i);
+				if (object == null) {
+					sb.append(" is null");
+				} else {
+					sb.append("=" + cellContentConverter.toSql(object));
+				}
 			} else {
 				sb.append(" is null");
 			}
@@ -1029,7 +1275,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Gets a SQL comparition expression for comparing rows with entities.
-	 * 
+	 *
 	 * @param table the table
 	 * @return a SQL comparition expression for comparing rows of <code>table</code> with entities
 	 */
@@ -1037,11 +1283,9 @@ public class RemoteEntityGraph extends EntityGraph {
 		return pkEqualsEntityID(table, tableAlias, entityAlias, "");
 	}
 
-	private final Set<String> fieldProcTables = new HashSet<String>();
-	
 	/**
 	 * Gets a SQL comparison expression for comparing rows with entities.
-	 * 
+	 *
 	 * @param table the table
 	 * @return a SQL comparison expression for comparing rows of <code>table</code> with entities
 	 */
@@ -1053,14 +1297,22 @@ public class RemoteEntityGraph extends EntityGraph {
 				sb.append(" and ");
 			}
 			Column tableColumn = match.get(column);
-			sb.append(entityAlias + "." + columnPrefix + column.name);
 			if (tableColumn != null) {
-				if (fieldProcTables.contains(table.getUnqualifiedName().toLowerCase())) {
-					sb.append(" = " + tableColumn.type + "(" + tableAlias + "." + quoting.requote(tableColumn.name) + ")");
-				} else {
-					sb.append("=" + tableAlias + "." + quoting.requote(tableColumn.name));
+				if (tableColumn.isNullable) {
+					sb.append("(");
+				}
+				sb.append(entityAlias + "." + columnPrefix + column.name);
+				sb.append("=" + tableAlias + "." + quoting.requote(tableColumn.name));
+				if (tableColumn.isNullable) {
+					sb.append(" or (");
+					sb.append(entityAlias + "." + columnPrefix + column.name + " is null and ");
+					sb.append(tableAlias + "." + quoting.requote(tableColumn.name) + " is null)");
+				}
+				if (tableColumn.isNullable) {
+					sb.append(")");
 				}
 			} else {
+				sb.append(entityAlias + "." + columnPrefix + column.name);
 				sb.append(" is null");
 			}
 		}
@@ -1069,7 +1321,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Gets PK-column list for a table.
-	 * 
+	 *
 	 * @param table the table
 	 * @param tableAlias the alias for table
 	 * @return PK-column list for table
@@ -1077,10 +1329,10 @@ public class RemoteEntityGraph extends EntityGraph {
 	private String pkList(Table table, String tableAlias) {
 		return pkList(table, tableAlias, null);
 	}
-	
+
 	/**
 	 * Gets PK-column list for a table. (for Select clause)
-	 * 
+	 *
 	 * @param table the table
 	 * @param tableAlias the alias for table
 	 * @param columnAliasPrefix optional prefix for column names
@@ -1095,7 +1347,7 @@ public class RemoteEntityGraph extends EntityGraph {
 					sb.append(", ");
 				}
 				sb.append(tableAlias + "." + quoting.requote(tableColumn.name));
-				sb.append(" AS " + (columnAliasPrefix == null? "" : columnAliasPrefix) + column.name);
+				sb.append(" as " + (columnAliasPrefix == null? "" : columnAliasPrefix) + column.name);
 		   }
 		}
 		return sb.toString();
@@ -1103,7 +1355,7 @@ public class RemoteEntityGraph extends EntityGraph {
 
 	/**
 	 * Gets PK-column list for a table. (for Insert clause)
-	 * 
+	 *
 	 * @param table the table
 	 * @param columnAliasPrefix optional prefix for column names
 	 */
@@ -1129,10 +1381,10 @@ public class RemoteEntityGraph extends EntityGraph {
 	 * Total row-count.
 	 */
 	private long totalRowcount = 0;
-	
+
 	/**
 	 * Gets total row-count.
-	 * 
+	 *
 	 * @return total row-count
 	 */
 	@Override
@@ -1141,28 +1393,8 @@ public class RemoteEntityGraph extends EntityGraph {
 	}
 
 	/**
-	 * Whether or not to store additional information in order to create a 'explain.log'
-	 */
-	private boolean explain = false;
-
-	/**
-	 * Next unique ID for association to be used for explanation.
-	 */
-	private int nextExplainID = 1;
-	
-	/**
-	 * Whether or not to store additional information in order to create a 'explain.log'.
-	 * 
-	 * @param explain <code>true</code> iff predecessors of each entity must be stored
-	 */
-	@Override
-	public void setExplain(boolean explain) {
-		this.explain = explain;
-	}
-
-	/**
 	 * Gets the universal primary key.
-	 * 
+	 *
 	 * @return the universal primary key
 	 */
 	@Override
@@ -1174,10 +1406,10 @@ public class RemoteEntityGraph extends EntityGraph {
 	 * For creation of unique set-ids.
 	 */
 	private int nextSetId = 1;
-	
+
 	/**
 	 * Creates a unique set id.
-	 * 
+	 *
 	 * @return a unique set id
 	 */
 	private synchronized int getNextSetId() {

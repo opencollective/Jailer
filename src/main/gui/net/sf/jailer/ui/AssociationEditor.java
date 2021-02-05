@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 - 2019 Ralf Wisser.
+ * Copyright 2007 - 2021 Ralf Wisser.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -125,6 +125,7 @@ public class AssociationEditor extends javax.swing.JDialog {
 		
 		type.setRenderer(createTypeRenderer());
 		pack();
+		setSize(Math.max(480, getWidth()), getHeight());
 		setLocation(parent.getLocation().x + parent.getSize().width/2 - getPreferredSize().width/2,
 				parent.getLocation().y + parent.getSize().height/2 - getPreferredSize().height/2);
 		UIUtil.initPeer();
@@ -141,10 +142,10 @@ public class AssociationEditor extends javax.swing.JDialog {
     private void initComponents() {
         java.awt.GridBagConstraints gridBagConstraints;
 
-        source = new JComboBox();
-        type = new JComboBox();
-        destination = new JComboBox();
-        cardinality = new JComboBox();
+        source = new JComboBox2();
+        type = new JComboBox2();
+        destination = new JComboBox2();
+        cardinality = new JComboBox2();
         jLabel1 = new javax.swing.JLabel();
         jLabel2 = new javax.swing.JLabel();
         jLabel6 = new javax.swing.JLabel();
@@ -451,8 +452,8 @@ public class AssociationEditor extends javax.swing.JDialog {
 	}
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private JComboBox cardinality;
-    private JComboBox destination;
+    private JComboBox2 cardinality;
+    private JComboBox2 destination;
     private javax.swing.JButton jButton1;
     private javax.swing.JButton jButton2;
     private javax.swing.JLabel jLabel1;
@@ -464,8 +465,8 @@ public class AssociationEditor extends javax.swing.JDialog {
     private javax.swing.JLabel jLabel9;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JTextField nameField;
-    private JComboBox source;
-    private JComboBox type;
+    private JComboBox2 source;
+    private JComboBox2 type;
     // End of variables declaration//GEN-END:variables
 
 	private class TableModel {
@@ -581,6 +582,11 @@ public class AssociationEditor extends javax.swing.JDialog {
 					provider.addAlias("B", tab);
 				}
 			}
+		}
+
+		@Override
+		protected boolean isInitialized() {
+			return true;
 		}
 	}
 	
